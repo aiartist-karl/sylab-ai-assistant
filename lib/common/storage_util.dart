@@ -1,6 +1,6 @@
 import 'package:hive/hive.dart';
 import 'package:hive_flutter/hive_flutter.dart';
-import 'message_model.dart';
+import '../model/message_model.dart';
 
 class StorageUtil {
   // 全局唯一消息存储Box，强绑定MessageModel类型
