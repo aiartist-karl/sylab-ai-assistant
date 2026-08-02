@@ -30,32 +30,36 @@ jobs:
           cp -r $GITHUB_WORKSPACE/lib/* lib/
           cp $GITHUB_WORKSPACE/pubspec.yaml pubspec.yaml
           
-          # ===== 修复 1: app compileSdk 设为 35 =====
+          # 设置 app compileSdk = 35
           sed -i 's/compileSdk = flutter.compileSdkVersion/compileSdk = 35/' android/app/build.gradle.kts
           sed -i 's/targetSdk = flutter.targetSdkVersion/targetSdk = 35/' android/app/build.gradle.kts
           
-          # ===== 修复 2: 强制所有子模块(插件) compileSdk = 35 =====
-          # 在 android/build.gradle.kts 末尾追加 subprojects 块
-          cat >> android/build.gradle.kts << 'GRADLE_EOF'
-          
-          subprojects {
-              afterEvaluate {
-                  if (plugins.hasPlugin("com.android.library")) {
-                      extensions.configure<com.android.build.gradle.LibraryExtension>("android") {
-                          compileSdk = 35
-                      }
-                  }
-              }
-          }
-          GRADLE_EOF
-          
-          echo "=== android/build.gradle.kts ==="
-          cat android/build.gradle.kts
-          echo "=== android/app/build.gradle.kts (compileSdk line) ==="
-          grep -n "compileSdk" android/app/build.gradle.kts
-          
           # 安装依赖
           flutter pub get
+          
+          # ===== Patch ALL plugin packages in pub-cache to use compileSdk 35 =====
+          PUB_CACHE_DIR="${PUB_CACHE:-$HOME/.pub-cache}"
+          echo "Patching all Android plugin build.gradle files in $PUB_CACHE_DIR..."
+          
+          # Find all android build.gradle files in pub-cache
+          find "$PUB_CACHE_DIR" -path "*/android/build.gradle" -type f | while read f; do
+            echo "Patching: $f"
+            # Replace compileSdkVersion XX with 35 (Groovy format)
+            sed -i 's/compileSdkVersion [0-9]*/compileSdkVersion 35/' "$f"
+            # Replace compileSdk = XX with 35 (Kotlin DSL in .gradle files)  
+            sed -i 's/compileSdk = [0-9]*/compileSdk = 35/' "$f"
+            # Replace flutter.compileSdkVersion with 35
+            sed -i 's/flutter.compileSdkVersion/35/' "$f"
+          done
+          
+          # Also patch any build.gradle.kts files
+          find "$PUB_CACHE_DIR" -path "*/android/build.gradle.kts" -type f | while read f; do
+            echo "Patching KTS: $f"
+            sed -i 's/compileSdk = flutter.compileSdkVersion/compileSdk = 35/' "$f"
+            sed -i 's/compileSdk = [0-9]*/compileSdk = 35/' "$f"
+          done
+          
+          echo "=== Patching complete ==="
           
           # 生成 Hive 适配器
           flutter pub run build_runner build --delete-conflicting-outputs
