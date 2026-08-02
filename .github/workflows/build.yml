@@ -30,24 +30,32 @@ jobs:
           cp -r $GITHUB_WORKSPACE/lib/* lib/
           cp $GITHUB_WORKSPACE/pubspec.yaml pubspec.yaml
           
-          # 修改 app compileSdk 为 34
-          sed -i 's/compileSdk = flutter.compileSdkVersion/compileSdk = 34/' android/app/build.gradle.kts
+          # ===== 修复 1: app compileSdk 设为 35 =====
+          sed -i 's/compileSdk = flutter.compileSdkVersion/compileSdk = 35/' android/app/build.gradle.kts
+          sed -i 's/targetSdk = flutter.targetSdkVersion/targetSdk = 35/' android/app/build.gradle.kts
+          
+          # ===== 修复 2: 强制所有子模块(插件) compileSdk = 35 =====
+          # 在 android/build.gradle.kts 末尾追加 subprojects 块
+          cat >> android/build.gradle.kts << 'GRADLE_EOF'
+          
+          subprojects {
+              afterEvaluate {
+                  if (plugins.hasPlugin("com.android.library")) {
+                      extensions.configure<com.android.build.gradle.LibraryExtension>("android") {
+                          compileSdk = 35
+                      }
+                  }
+              }
+          }
+          GRADLE_EOF
+          
+          echo "=== android/build.gradle.kts ==="
+          cat android/build.gradle.kts
+          echo "=== android/app/build.gradle.kts (compileSdk line) ==="
+          grep -n "compileSdk" android/app/build.gradle.kts
           
           # 安装依赖
           flutter pub get
-          
-          # 直接修改 image_gallery_saver2_fixed 包的 compileSdk
-          # 找到包在 pub-cache 中的位置
-          PKG_DIR=$(find ${PUB_CACHE:-$HOME/.pub-cache} -path "*/image_gallery_saver2_fixed*/android" -type d | head -1)
-          echo "Found package at: $PKG_DIR"
-          if [ -n "$PKG_DIR" ]; then
-            # 强制设置 compileSdkVersion 为 34
-            for f in $(find "$PKG_DIR" -name "build.gradle"); do
-              echo "Patching: $f"
-              sed -i 's/compileSdkVersion.*/compileSdkVersion 34/' "$f"
-              sed -i 's/compileSdk.*/compileSdk 34/' "$f"
-            done
-          fi
           
           # 生成 Hive 适配器
           flutter pub run build_runner build --delete-conflicting-outputs
