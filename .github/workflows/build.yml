@@ -22,27 +22,39 @@ jobs:
       - name: Create temp Flutter project and merge source
         run: |
           cd /tmp
-          # 创建临时项目获取完整 Android 工程结构
           flutter create --org com.sylab --project-name sylab sylab_build --platforms android
           
           cd sylab_build
           
-          # 复制我们的源码和配置
+          # 复制源码和配置
           cp -r $GITHUB_WORKSPACE/lib/* lib/
           cp $GITHUB_WORKSPACE/pubspec.yaml pubspec.yaml
           
-          # 修改 android/app/build.gradle：提高 compileSdkVersion 和 targetSdkVersion
-          # image_gallery_saver2_fixed 需要 android:attr/lStar (API 31+)
-          sed -i 's/compileSdk = flutter.compileSdkVersion/compileSdk = 34/' android/app/build.gradle
-          sed -i 's/targetSdk = flutter.targetSdkVersion/targetSdk = 34/' android/app/build.gradle
+          # 查找并修改 build.gradle (Groovy) 或 build.gradle.kts (Kotlin DSL)
+          if [ -f "android/app/build.gradle" ]; then
+            echo "Found Groovy build.gradle"
+            sed -i 's/compileSdk = flutter.compileSdkVersion/compileSdk = 34/' android/app/build.gradle
+            sed -i 's/targetSdk = flutter.targetSdkVersion/targetSdk = 34/' android/app/build.gradle
+            sed -i 's/compileSdk flutter.compileSdkVersion/compileSdk 34/' android/app/build.gradle
+            sed -i 's/targetSdk flutter.targetSdkVersion/targetSdk 34/' android/app/build.gradle
+            sed -i 's/compileSdkVersion flutter.compileSdkVersion/compileSdkVersion 34/' android/app/build.gradle
+            sed -i 's/targetSdkVersion flutter.targetSdkVersion/targetSdkVersion 34/' android/app/build.gradle
+          fi
+          if [ -f "android/app/build.gradle.kts" ]; then
+            echo "Found Kotlin build.gradle.kts"
+            sed -i 's/compileSdk = flutter.compileSdkVersion/compileSdk = 34/' android/app/build.gradle.kts
+            sed -i 's/targetSdk = flutter.targetSdkVersion/targetSdk = 34/' android/app/build.gradle.kts
+            sed -i 's/compileSdk = flutter\.compileSdkVersion/compileSdk = 34/' android/app/build.gradle.kts
+            sed -i 's/targetSdk = flutter\.targetSdkVersion/targetSdk = 34/' android/app/build.gradle.kts
+          fi
           
-          # 安装依赖
+          # 显示实际使用的 SDK 版本
+          echo "=== build.gradle config ==="
+          find android -name "build.gradle*" -exec grep -n "compileSdk\|targetSdk" {} \;
+          
+          # 安装依赖 + 构建
           flutter pub get
-          
-          # 生成 Hive 适配器
           flutter pub run build_runner build --delete-conflicting-outputs
-          
-          # 构建 APK
           flutter build apk --release
 
       - name: Upload APK artifact
