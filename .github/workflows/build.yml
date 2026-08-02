@@ -19,17 +19,23 @@ jobs:
           channel: stable
           cache: true
 
-      - name: Install dependencies
-        run: flutter pub get
-
-      - name: Run build_runner for Hive adapters
-        run: flutter pub run build_runner build --delete-conflicting-outputs
-
-      - name: Build release APK
-        run: flutter build apk --release
+      - name: Create temp Flutter project and merge source
+        run: |
+          cd /tmp
+          flutter create --org com.sylab --project-name sylab sylab_build --platforms android
+          cd sylab_build
+          # 复制我们的源码
+          cp -r $GITHUB_WORKSPACE/lib/* lib/
+          cp $GITHUB_WORKSPACE/pubspec.yaml pubspec.yaml
+          # 安装依赖
+          flutter pub get
+          # 生成 Hive 适配器
+          flutter pub run build_runner build --delete-conflicting-outputs
+          # 构建 APK
+          flutter build apk --release
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
           name: release-apk
-          path: build/app/outputs/flutter-apk/app-release.apk
+          path: /tmp/sylab_build/build/app/outputs/flutter-apk/app-release.apk
