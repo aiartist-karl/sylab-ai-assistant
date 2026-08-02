@@ -30,45 +30,13 @@ jobs:
           cp -r $GITHUB_WORKSPACE/lib/* lib/
           cp $GITHUB_WORKSPACE/pubspec.yaml pubspec.yaml
           
-          # 调试：显示 build.gradle 文件
-          echo "=== android/app/ build files ==="
-          ls -la android/app/build.gradle*
-          echo "=== android/ build files ==="
-          ls -la android/build.gradle*
+          # 修复 image_gallery_saver2_fixed 的 lStar 问题：
+          # 直接在 app/build.gradle.kts 中将 compileSdk 设为 34
+          sed -i 's/compileSdk = flutter.compileSdkVersion/compileSdk = 34/' android/app/build.gradle.kts
           
-          # 显示 app 级 build 文件内容
-          echo "=== app build.gradle.kts content ==="
-          cat android/app/build.gradle.kts 2>/dev/null || cat android/app/build.gradle 2>/dev/null
-          
-          # 在 android/build.gradle (项目级别) 末尾添加强制 compileSdk 配置
-          # 这会覆盖所有子模块（包括 image_gallery_saver2_fixed）的 compileSdk
-          if [ -f "android/build.gradle.kts" ]; then
-            cat >> android/build.gradle.kts << 'GRADLE'
-          
-          subprojects {
-              afterEvaluate {
-                  if (project.hasProperty("android")) {
-                      project.android {
-                          compileSdk = 34
-                      }
-                  }
-              }
-          }
-          GRADLE
-          else
-            cat >> android/build.gradle << 'GRADLE'
-          
-          subprojects {
-              afterEvaluate { project ->
-                  if (project.hasProperty('android')) {
-                      project.android {
-                          compileSdkVersion 34
-                      }
-                  }
-              }
-          }
-          GRADLE
-          fi
+          # 验证修改结果
+          echo "=== Modified build.gradle.kts ==="
+          cat android/app/build.gradle.kts
           
           # 安装依赖 + 构建
           flutter pub get
