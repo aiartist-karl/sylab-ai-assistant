@@ -30,59 +30,29 @@ jobs:
           cp -r $GITHUB_WORKSPACE/lib/* lib/
           cp $GITHUB_WORKSPACE/pubspec.yaml pubspec.yaml
           
-          # ====== 修复 image_gallery_saver2_fixed lStar 问题 ======
-          # 1. 修改 app 的 compileSdk 为 34
+          # 修改 app compileSdk 为 34
           sed -i 's/compileSdk = flutter.compileSdkVersion/compileSdk = 34/' android/app/build.gradle.kts
           
-          # 2. 删除 Kotlin DSL 的项目级 build.gradle.kts，替换为 Groovy 格式
-          #    Groovy 语法可以更方便地强制子项目 compileSdk
-          rm -f android/build.gradle.kts
-          cat > android/build.gradle << 'GRADLE'
-          allprojects {
-              repositories {
-                  google()
-                  mavenCentral()
-              }
-          }
-          
-          rootProject.buildDir = "../build"
-          subprojects {
-              project.buildDir = "${rootProject.buildDir}/${project.name}"
-          }
-          subprojects {
-              project.evaluationDependsOn(":app")
-          }
-          
-          // 强制所有子模块（包括 image_gallery_saver2_fixed）使用 compileSdk 34
-          subprojects {
-              afterEvaluate { project ->
-                  if (project.hasProperty('android')) {
-                      project.android {
-                          compileSdkVersion 34
-                      }
-                  }
-              }
-          }
-          
-          tasks.register("clean", Delete) {
-              delete rootProject.buildDir
-          }
-          GRADLE
-          
-          # 3. settings.gradle.kts 也需要兼容 Groovy build.gradle
-          # Flutter 3.41 可能用 settings.gradle.kts，需要检查
-          if [ -f "android/settings.gradle.kts" ]; then
-            echo "Found settings.gradle.kts"
-            cat android/settings.gradle.kts
-          fi
-          if [ -f "android/settings.gradle" ]; then
-            echo "Found settings.gradle"
-            cat android/settings.gradle
-          fi
-          
-          # 安装依赖 + 构建
+          # 安装依赖
           flutter pub get
+          
+          # 直接修改 image_gallery_saver2_fixed 包的 compileSdk
+          # 找到包在 pub-cache 中的位置
+          PKG_DIR=$(find ${PUB_CACHE:-$HOME/.pub-cache} -path "*/image_gallery_saver2_fixed*/android" -type d | head -1)
+          echo "Found package at: $PKG_DIR"
+          if [ -n "$PKG_DIR" ]; then
+            # 强制设置 compileSdkVersion 为 34
+            for f in $(find "$PKG_DIR" -name "build.gradle"); do
+              echo "Patching: $f"
+              sed -i 's/compileSdkVersion.*/compileSdkVersion 34/' "$f"
+              sed -i 's/compileSdk.*/compileSdk 34/' "$f"
+            done
+          fi
+          
+          # 生成 Hive 适配器
           flutter pub run build_runner build --delete-conflicting-outputs
+          
+          # 构建 APK
           flutter build apk --release
 
       - name: Upload APK artifact
