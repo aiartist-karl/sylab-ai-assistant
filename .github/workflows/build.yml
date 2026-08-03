@@ -37,29 +37,17 @@ jobs:
           # 安装依赖
           flutter pub get
           
-          # ===== Patch ALL plugin packages in pub-cache to use compileSdk 35 =====
+          # 直接修改所有插件包的 compileSdk 为 35
           PUB_CACHE_DIR="${PUB_CACHE:-$HOME/.pub-cache}"
-          echo "Patching all Android plugin build.gradle files in $PUB_CACHE_DIR..."
-          
-          # Find all android build.gradle files in pub-cache
           find "$PUB_CACHE_DIR" -path "*/android/build.gradle" -type f | while read f; do
-            echo "Patching: $f"
-            # Replace compileSdkVersion XX with 35 (Groovy format)
             sed -i 's/compileSdkVersion [0-9]*/compileSdkVersion 35/' "$f"
-            # Replace compileSdk = XX with 35 (Kotlin DSL in .gradle files)  
             sed -i 's/compileSdk = [0-9]*/compileSdk = 35/' "$f"
-            # Replace flutter.compileSdkVersion with 35
             sed -i 's/flutter.compileSdkVersion/35/' "$f"
           done
-          
-          # Also patch any build.gradle.kts files
           find "$PUB_CACHE_DIR" -path "*/android/build.gradle.kts" -type f | while read f; do
-            echo "Patching KTS: $f"
             sed -i 's/compileSdk = flutter.compileSdkVersion/compileSdk = 35/' "$f"
             sed -i 's/compileSdk = [0-9]*/compileSdk = 35/' "$f"
           done
-          
-          echo "=== Patching complete ==="
           
           # 生成 Hive 适配器
           flutter pub run build_runner build --delete-conflicting-outputs
