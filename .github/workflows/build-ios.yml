@@ -43,6 +43,13 @@ jobs:
             sed -i '' 's/compileSdk = [0-9]*/compileSdk = 35/' "$f"
           done
           
+          # 移除 Xcode 强制签名要求（支持 --no-codesign）
+          PBXPROJ="ios/Runner.xcodeproj/project.pbxproj"
+          sed -i '' '/DEVELOPMENT_TEAM = /d' "$PBXPROJ"
+          sed -i '' '/CODE_SIGN_IDENTITY = /d' "$PBXPROJ"
+          sed -i '' '/CODE_SIGN_STYLE = /d' "$PBXPROJ"
+          sed -i '' '/PROVISIONING_PROFILE_SPECIFIER = /d' "$PBXPROJ"
+          
           # 生成 Hive 适配器代码
           flutter pub run build_runner build --delete-conflicting-outputs
           
