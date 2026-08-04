@@ -17,53 +17,27 @@ jobs:
           channel: stable
           cache: true
 
-      - name: Create temp Flutter project and merge source
-        run: |
-          cd /tmp
-          flutter create --org com.sylab --project-name sylab sylab_build --platforms ios
-          
-          cd sylab_build
-          
-          # 复制源码和配置
-          cp -r $GITHUB_WORKSPACE/lib/* lib/
-          cp $GITHUB_WORKSPACE/pubspec.yaml pubspec.yaml
-          
-          # 安装依赖
-          flutter pub get
-          
-          # Patch 所有插件包的 compileSdk 为 35
-          PUB_CACHE_DIR="${PUB_CACHE:-$HOME/.pub-cache}"
-          find "$PUB_CACHE_DIR" -path "*/android/build.gradle" -type f | while read f; do
-            sed -i '' 's/compileSdkVersion [0-9]*/compileSdkVersion 35/' "$f"
-            sed -i '' 's/compileSdk = [0-9]*/compileSdk = 35/' "$f"
-            sed -i '' 's/flutter.compileSdkVersion/35/' "$f"
-          done
-          find "$PUB_CACHE_DIR" -path "*/android/build.gradle.kts" -type f | while read f; do
-            sed -i '' 's/compileSdk = flutter.compileSdkVersion/compileSdk = 35/' "$f"
-            sed -i '' 's/compileSdk = [0-9]*/compileSdk = 35/' "$f"
-          done
-          
-          # 生成 Hive 适配器代码
-          flutter pub run build_runner build --delete-conflicting-outputs
-          
-          # 构建 iOS Simulator (不需要签名)
-          flutter build ios --simulator --debug
+      - name: Create iOS platform scaffolding
+        run: flutter create . --org com.sylab --project-name sylab --platforms ios
 
-      - name: Create unsigned IPA
+      - name: Get dependencies
+        run: flutter pub get
+
+      - name: Generate Hive adapters
+        run: flutter pub run build_runner build --delete-conflicting-outputs
+
+      - name: Build iOS (no codesign)
+        run: flutter build ios --release --no-codesign
+
+      - name: Package .app into IPA
         run: |
-          cd /tmp/sylab_build
-          
-          # 创建 IPA 结构
           mkdir -p Payload
-          cp -r build/ios/iphonesimulator/*.app Payload/
-          
-          # 打包为 IPA
-          zip -r SylabAI-v2.0-simulator.ipa Payload/
-          
-          echo "IPA size: $(du -h SylabAI-v2.0-simulator.ipa | cut -f1)"
+          cp -r build/ios/iphoneos/Runner.app Payload/
+          zip -r SylabAI-v2.0-iOS-Unsigned.ipa Payload/
+          ls -lh SylabAI-v2.0-iOS-Unsigned.ipa
 
       - name: Upload IPA artifact
         uses: actions/upload-artifact@v4
         with:
-          name: release-ipa-simulator
-          path: /tmp/sylab_build/SylabAI-v2.0-simulator.ipa
+          name: release-ipa
+          path: SylabAI-v2.0-iOS-Unsigned.ipa
