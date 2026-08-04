@@ -28,8 +28,6 @@ dependencies:
   logger: ^2.4.0
   # 防抖动
   easy_debounce: ^2.0.3
-  # 修复：官方稳定可用相册保存库
-  image_gallery_saver2_fixed: ^2.0.6
   # 修复：官方真实存在docx文档生成库
   docx_creator: ^1.1.2
   # Markdown 渲染
