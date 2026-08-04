@@ -43,16 +43,10 @@ jobs:
             sed -i '' 's/compileSdk = [0-9]*/compileSdk = 35/' "$f"
           done
           
-          # 关键修复：在 flutter build 之前强制设置 DEVELOPMENT_TEAM 为空
+          # 关键修复：设置 DEVELOPMENT_TEAM 为空字符串
           PBXPROJ="ios/Runner.xcodeproj/project.pbxproj"
-          # 先删除所有 DEVELOPMENT_TEAM 行
-          sed -i '' '/DEVELOPMENT_TEAM = /d' "$PBXPROJ"
-          # 在 buildSettings 块中插入空的 DEVELOPMENT_TEAM
-          sed -i '' '/CODE_SIGN_IDENTITY = /a\
-				DEVELOPMENT_TEAM = "";' "$PBXPROJ"
-          # 移除 CODE_SIGN_IDENTITY 的强制签名
-          sed -i '' 's/CODE_SIGN_IDENTITY = "iPhone Developer"/CODE_SIGN_IDENTITY = ""/g' "$PBXPROJ"
-          sed -i '' 's/CODE_SIGN_IDENTITY = "iPhone Distribution"/CODE_SIGN_IDENTITY = ""/g' "$PBXPROJ"
+          sed -i '' 's/DEVELOPMENT_TEAM = [A-Z0-9]*/DEVELOPMENT_TEAM = ""/g' "$PBXPROJ"
+          sed -i '' 's/CODE_SIGN_IDENTITY = "iPhone [^"]*"/CODE_SIGN_IDENTITY = ""/g' "$PBXPROJ"
           
           # 生成 Hive 适配器代码
           flutter pub run build_runner build --delete-conflicting-outputs
