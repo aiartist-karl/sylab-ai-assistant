@@ -43,16 +43,11 @@ jobs:
             sed -i '' 's/compileSdk = [0-9]*/compileSdk = 35/' "$f"
           done
           
-          # 关键修复：设置 DEVELOPMENT_TEAM 为空字符串
-          PBXPROJ="ios/Runner.xcodeproj/project.pbxproj"
-          sed -i '' 's/DEVELOPMENT_TEAM = [A-Z0-9]*/DEVELOPMENT_TEAM = ""/g' "$PBXPROJ"
-          sed -i '' 's/CODE_SIGN_IDENTITY = "iPhone [^"]*"/CODE_SIGN_IDENTITY = ""/g' "$PBXPROJ"
-          
           # 生成 Hive 适配器代码
           flutter pub run build_runner build --delete-conflicting-outputs
           
-          # 构建 iOS (不签名)
-          flutter build ios --release --no-codesign
+          # 构建 iOS Simulator (不需要签名)
+          flutter build ios --simulator --debug
 
       - name: Create unsigned IPA
         run: |
@@ -60,15 +55,15 @@ jobs:
           
           # 创建 IPA 结构
           mkdir -p Payload
-          cp -r build/ios/iphoneos/Runner.app Payload/
+          cp -r build/ios/iphonesimulator/*.app Payload/
           
           # 打包为 IPA
-          zip -r SylabAI-v2.0-unsigned.ipa Payload/
+          zip -r SylabAI-v2.0-simulator.ipa Payload/
           
-          echo "IPA size: $(du -h SylabAI-v2.0-unsigned.ipa | cut -f1)"
+          echo "IPA size: $(du -h SylabAI-v2.0-simulator.ipa | cut -f1)"
 
       - name: Upload IPA artifact
         uses: actions/upload-artifact@v4
         with:
-          name: release-ipa
-          path: /tmp/sylab_build/SylabAI-v2.0-unsigned.ipa
+          name: release-ipa-simulator
+          path: /tmp/sylab_build/SylabAI-v2.0-simulator.ipa
