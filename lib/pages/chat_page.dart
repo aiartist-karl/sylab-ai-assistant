@@ -915,14 +915,8 @@ class _CollapsibleToolCardState extends State<_CollapsibleToolCard>
                         ],
                       ),
                     ),
-                    AnimatedBuilder(
-                      animation: _sizeAnimation,
-                      builder: (context, child) {
-                        return Transform.rotate(
-                          angle: _expanded ? 3.14159 : 0,
-                          child: child,
-                        );
-                      },
+                    RotationTransition(
+                      turns: Tween(begin: 0.0, end: 0.5).animate(_sizeAnimation),
                       child: Icon(
                         Icons.expand_more,
                         size: 20,
