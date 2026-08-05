@@ -89,10 +89,10 @@ class AgentEngine {
 
         // 解析自定义 SSE 事件流
         final stream = response.data.stream
-            .cast<List<int>>().transform(utf8.decoder)
+            .transform<String>(utf8.decoder as StreamTransformer<List<int>, String>)
             .transform(const LineSplitter())
-            .where((line) => line.isNotEmpty)
-            .expand((line) => _parseSSELine(line))
+            .where((String line) => line.isNotEmpty)
+            .expand((String line) => _parseSSELine(line))
             .where((event) => event.type != AgentEventType.done);
 
         return stream;
@@ -191,7 +191,7 @@ class AgentEngine {
 
           // 完整 SSE 流式数据解析
           final stream = response.data.stream
-              .cast<List<int>>().transform(utf8.decoder)
+              .transform<String>(utf8.decoder as StreamTransformer<List<int>, String>)
               .transform(const LineSplitter())
               .where((line) => line.isNotEmpty)
               .where((line) => line.startsWith('data: '))
