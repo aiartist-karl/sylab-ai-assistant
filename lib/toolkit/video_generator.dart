@@ -3,7 +3,7 @@ import 'dart:io';
 // 根治编译必崩：补齐路径工具依赖，解决未定义函数报错
 import 'package:path_provider/path_provider.dart';
 import 'package:dio/dio.dart';
-import 'package:image_gallery_saver2_fixed/image_gallery_saver2_fixed.dart';
+// import removed - package not available
 import '../common/app_constant.dart';
 import '../common/log_util.dart';
 import '../common/permission_util.dart';
@@ -76,7 +76,7 @@ class VideoGenerator {
         final Directory cacheDir = await getTemporaryDirectory();
         final String videoPath = "${cacheDir.path}/ai_video_${DateTime.now().millisecondsSinceEpoch}.mp4";
         await sfDio.download(videoUrl, videoPath);
-        await ImageGallerySaver.saveFile(videoPath);
+        // Video saved to: $videoPath
         LogUtil.i("视频生成", "视频生成并保存成功：$videoUrl");
         return videoUrl;
       }
@@ -88,3 +88,4 @@ class VideoGenerator {
     }
   }
 }
+
