@@ -3,8 +3,8 @@ description: Sylab AI 助手 - 商用级多智能体AI助手（商业化升级�
 version: 2.0.0+4
 
 environment:
-  sdk: '>=3.5.0 <4.0.0'
-  flutter: '>=3.24.0'
+  sdk: '>=3.8.0 <4.0.0'
+  flutter: '>=3.29.0'
 
 dependencies:
   flutter:
@@ -47,3 +47,4 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
+
