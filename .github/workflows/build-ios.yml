@@ -28,13 +28,26 @@ jobs:
       - name: Generate Hive adapters
         run: flutter pub run build_runner build --delete-conflicting-outputs
 
-      - name: Build iOS (no codesign)
-        run: flutter build ios --release --no-codesign
+      - name: Install CocoaPods
+        run: cd ios && pod install --repo-update
+
+      - name: Build iOS with xcodebuild (no codesign)
+        run: |
+          cd ios
+          xcodebuild -workspace Runner.xcworkspace \
+            -scheme Runner \
+            -configuration Release \
+            -sdk iphoneos \
+            -derivedDataPath ../build/ios \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            COMPILER_INDEX_STORE_ENABLE=NO
 
       - name: Package .app into IPA
         run: |
           mkdir -p Payload
-          cp -R build/ios/iphoneos/Runner.app Payload/
+          cp -R build/ios/Build/Products/Release-iphoneos/Runner.app Payload/
           zip -r Sylab-iOS-Unsigned.ipa Payload
           rm -rf Payload
 
