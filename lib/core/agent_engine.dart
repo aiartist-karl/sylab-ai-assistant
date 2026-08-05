@@ -59,7 +59,7 @@ class AgentEvent {
 }
 
 /// 将字节流转为字符串流（绕过 Utf8Decoder 类型问题）
-Stream<String> _bytesToStringStream(Stream stream) async* {
+Stream<String> _bytesToStringStream(Stream<dynamic> stream) async* {
   await for (final chunk in stream) {
     if (chunk is List<int>) {
       yield utf8.decode(chunk, allowMalformed: true);
@@ -96,9 +96,9 @@ class AgentEngine {
         );
 
         // 解析自定义 SSE 事件流
-        final stringStream = _bytesToStringStream(response.data.stream);
-        final linesStream = stringStream.transform(const LineSplitter());
-        final stream = linesStream
+        final Stream<String> stringStream = _bytesToStringStream(response.data.stream);
+        final Stream<String> linesStream = stringStream.transform(const LineSplitter());
+        final Stream<AgentEvent> stream = linesStream
             .where((String line) => line.isNotEmpty)
             .expand((String line) => _parseSSELine(line))
             .where((AgentEvent event) => event.type != AgentEventType.done);
@@ -192,9 +192,9 @@ class AgentEngine {
           );
 
           // 完整 SSE 流式数据解析
-          final stringStream = _bytesToStringStream(response.data.stream);
-          final linesStream = stringStream.transform(const LineSplitter());
-          final stream = linesStream
+          final Stream<String> stringStream = _bytesToStringStream(response.data.stream);
+          final Stream<String> linesStream = stringStream.transform(const LineSplitter());
+          final Stream<String> stream = linesStream
               .where((String line) => line.isNotEmpty)
               .where((String line) => line.startsWith('data: '))
               .map((String line) => line.substring(6).trim())
@@ -237,3 +237,4 @@ class AgentEngine {
     });
   }
 }
+
