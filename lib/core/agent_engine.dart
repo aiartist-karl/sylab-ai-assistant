@@ -96,12 +96,13 @@ class AgentEngine {
         );
 
         // 解析自定义 SSE 事件流
-        final Stream<String> stringStream = _bytesToStringStream(response.data.stream);
-        final Stream<String> linesStream = stringStream.transform(const LineSplitter());
-        final Stream<AgentEvent> stream = linesStream
-            .where((String line) => line.isNotEmpty)
-            .expand((String line) => _parseSSELine(line))
-            .where((AgentEvent event) => event.type != AgentEventType.done);
+        final stringStream = _bytesToStringStream(response.data.stream);
+        final linesStream = stringStream.transform(const LineSplitter());
+        final stream = linesStream
+            .where((line) => line.toString().isNotEmpty)
+            .expand((line) => _parseSSELine(line.toString()))
+            .where((event) => event.type != AgentEventType.done)
+            .cast<AgentEvent>();
 
         return stream;
       });
@@ -192,25 +193,27 @@ class AgentEngine {
           );
 
           // 完整 SSE 流式数据解析
-          final Stream<String> stringStream = _bytesToStringStream(response.data.stream);
-          final Stream<String> linesStream = stringStream.transform(const LineSplitter());
-          final Stream<String> stream = linesStream
-              .where((String line) => line.isNotEmpty)
-              .where((String line) => line.startsWith('data: '))
-              .map((String line) => line.substring(6).trim())
-              .where((String jsonStr) => jsonStr != '[DONE]')
-              .map((String jsonStr) {
+          final stringStream = _bytesToStringStream(response.data.stream);
+          final linesStream = stringStream.transform(const LineSplitter());
+          final stream = linesStream
+              .where((line) => line.toString().isNotEmpty)
+              .where((line) => line.toString().startsWith('data: '))
+              .map((line) => line.toString().substring(6).trim())
+              .where((jsonStr) => jsonStr != '[DONE]')
+              .map((jsonStr) {
                 try {
-                  final Map<String, dynamic> jsonData = json.decode(jsonStr);
+                  final Map<String, dynamic> jsonData = json.decode(jsonStr.toString());
                   final List<dynamic> choices = jsonData['choices'] ?? [];
                   if (choices.isEmpty) return '';
                   final Map<String, dynamic> delta = choices[0]['delta'] ?? {};
-                  return delta['content'] ?? '';
+                  final content = delta['content'];
+                  return content is String ? content : '';
                 } catch (_) {
                   return '';
                 }
               })
-              .where((String text) => text.isNotEmpty);
+              .where((text) => text.toString().isNotEmpty)
+              .cast<String>();
 
           return stream;
         });
@@ -237,4 +240,5 @@ class AgentEngine {
     });
   }
 }
+
 
