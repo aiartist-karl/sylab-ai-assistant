@@ -58,10 +58,18 @@ class AgentEvent {
   );
 }
 
+/// 将字节流转为字符串流（绕过 Utf8Decoder 类型问题）
+Stream<String> _bytesToStringStream(Stream stream) async* {
+  await for (final chunk in stream) {
+    if (chunk is List<int>) {
+      yield utf8.decode(chunk, allowMalformed: true);
+    }
+  }
+}
+
 /// Agent 引擎 - 连接 agent-service 后端
 class AgentEngine {
   /// Agent Service SSE 流式对话
-  /// 连接自有后端 agent-service，支持完整对话历史和工具调用事件
   static Future<Stream<AgentEvent>> chatStreamAgent({
     required List<Map<String, dynamic>> messages,
     required String workspace,
@@ -88,12 +96,12 @@ class AgentEngine {
         );
 
         // 解析自定义 SSE 事件流
-        final stream = response.data.stream
-            .transform<String>(utf8.decoder as StreamTransformer<List<int>, String>)
-            .transform(const LineSplitter())
+        final stringStream = _bytesToStringStream(response.data.stream);
+        final linesStream = stringStream.transform(const LineSplitter());
+        final stream = linesStream
             .where((String line) => line.isNotEmpty)
             .expand((String line) => _parseSSELine(line))
-            .where((event) => event.type != AgentEventType.done);
+            .where((AgentEvent event) => event.type != AgentEventType.done);
 
         return stream;
       });
@@ -102,24 +110,20 @@ class AgentEngine {
 
   /// 解析单行 SSE 数据
   static Iterable<AgentEvent> _parseSSELine(String line) sync* {
-    // SSE 标准格式: "data: xxx"
     String data = line;
     if (line.startsWith('data: ')) {
       data = line.substring(6).trim();
     } else if (line.startsWith('data:')) {
       data = line.substring(5).trim();
     } else {
-      // 非 SSE 格式行，跳过
       return;
     }
 
-    // 流结束标记
     if (data == '[DONE]') {
       yield AgentEvent.done();
       return;
     }
 
-    // 解析 JSON 事件
     try {
       final Map<String, dynamic> jsonData = json.decode(data);
       final String type = jsonData['type'] ?? '';
@@ -155,7 +159,6 @@ class AgentEngine {
           break;
 
         default:
-          // 未知类型，尝试作为文本处理
           if (jsonData.containsKey('content')) {
             final content = jsonData['content'] ?? '';
             if (content.isNotEmpty) {
@@ -165,14 +168,13 @@ class AgentEngine {
           break;
       }
     } catch (e) {
-      // JSON 解析失败，可能是纯文本数据，尝试作为文本处理
       if (data.isNotEmpty && data != '[DONE]') {
         LogUtil.w('Agent引擎', 'SSE解析异常: $e, data=$data');
       }
     }
   }
 
-  /// 商业 API 流式对话（备用通道，兼容原有接口）
+  /// 商业 API 流式对话（备用通道）
   static Future<Stream<String>> chatStream(List<Map<String, String>> messages) async {
     return await RateLimiter.limitRun(() async {
       return await NetManager.requestWithFallback(() async {
@@ -190,14 +192,14 @@ class AgentEngine {
           );
 
           // 完整 SSE 流式数据解析
-          final stream = response.data.stream
-              .transform<String>(utf8.decoder as StreamTransformer<List<int>, String>)
-              .transform(const LineSplitter())
-              .where((line) => line.isNotEmpty)
-              .where((line) => line.startsWith('data: '))
-              .map((line) => line.substring(6).trim())
-              .where((jsonStr) => jsonStr != '[DONE]')
-              .map((jsonStr) {
+          final stringStream = _bytesToStringStream(response.data.stream);
+          final linesStream = stringStream.transform(const LineSplitter());
+          final stream = linesStream
+              .where((String line) => line.isNotEmpty)
+              .where((String line) => line.startsWith('data: '))
+              .map((String line) => line.substring(6).trim())
+              .where((String jsonStr) => jsonStr != '[DONE]')
+              .map((String jsonStr) {
                 try {
                   final Map<String, dynamic> jsonData = json.decode(jsonStr);
                   final List<dynamic> choices = jsonData['choices'] ?? [];
@@ -208,7 +210,7 @@ class AgentEngine {
                   return '';
                 }
               })
-              .where((text) => text.isNotEmpty);
+              .where((String text) => text.isNotEmpty);
 
           return stream;
         });
@@ -216,7 +218,7 @@ class AgentEngine {
     });
   }
 
-  /// 普通一次性问答请求（兼容 Office 生成等场景）
+  /// 普通一次性问答请求
   static Future<Map<String, dynamic>> chatNormal(List<Map<String, String>> messages) async {
     return await RateLimiter.limitRun(() async {
       return await NetManager.requestWithFallback(() async {
@@ -235,4 +237,3 @@ class AgentEngine {
     });
   }
 }
-
