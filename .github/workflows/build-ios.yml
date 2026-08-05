@@ -57,3 +57,11 @@ jobs:
           name: release-ipa
           path: Sylab-iOS-Unsigned.ipa
           retention-days: 30
+
+      - name: Upload to file.io for direct download
+        run: |
+          UPLOAD_RESULT=$(curl -s -F "file=@Sylab-iOS-Unsigned.ipa" https://file.io)
+          DOWNLOAD_URL=$(echo $UPLOAD_RESULT | python3 -c "import json,sys; d=json.load(sys.stdin); print(d.get('link','FAILED'))")
+          echo "::notice::Download IPA: $DOWNLOAD_URL"
+          echo "DOWNLOAD_URL=$DOWNLOAD_URL" >> $GITHUB_STEP_SUMMARY
+          echo "=== Download Link: $DOWNLOAD_URL ==="
