@@ -58,10 +58,24 @@ jobs:
           path: Sylab-iOS-Unsigned.ipa
           retention-days: 30
 
-      - name: Upload to file.io for direct download
+      - name: Upload to multiple file hosts
         run: |
-          UPLOAD_RESULT=$(curl -s -F "file=@Sylab-iOS-Unsigned.ipa" https://file.io)
-          DOWNLOAD_URL=$(echo $UPLOAD_RESULT | python3 -c "import json,sys; d=json.load(sys.stdin); print(d.get('link','FAILED'))")
-          echo "::notice::Download IPA: $DOWNLOAD_URL"
-          echo "DOWNLOAD_URL=$DOWNLOAD_URL" >> $GITHUB_STEP_SUMMARY
-          echo "=== Download Link: $DOWNLOAD_URL ==="
+          echo "=== Uploading IPA to file hosting services ==="
+          
+          # Try tmpfiles.org
+          echo "Trying tmpfiles.org..."
+          TMPFILES_RESULT=$(curl -s -F "file=@Sylab-iOS-Unsigned.ipa" https://tmpfiles.org/api/v1/upload)
+          TMPFILES_URL=$(echo "$TMPFILES_RESULT" | python3 -c "import json,sys; d=json.load(sys.stdin); u=d.get('data',{}).get('url',''); print(u.replace('/tmpfiles.org/','/tmpfiles.org/dl/')) if u else print('')")
+          if [ -n "$TMPFILES_URL" ] && [ "$TMPFILES_URL" != "" ]; then
+            echo "tmpfiles.org URL: $TMPFILES_URL"
+            echo "DOWNLOAD_URL=$TMPFILES_URL" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "tmpfiles.org failed, trying 0x0.st..."
+            ZEROX_RESULT=$(curl -s -F "file=@Sylab-iOS-Unsigned.ipa" https://0x0.st)
+            if [ -n "$ZEROX_RESULT" ]; then
+              echo "0x0.st URL: $ZEROX_RESULT"
+              echo "DOWNLOAD_URL=$ZEROX_RESULT" >> $GITHUB_STEP_SUMMARY
+            else
+              echo "All file hosts failed"
+            fi
+          fi
