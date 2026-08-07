@@ -60,3 +60,18 @@ jobs:
         with:
           name: release-apk
           path: /tmp/sylab_build/build/app/outputs/flutter-apk/app-release.apk
+
+      - name: Create GitHub Release and upload APK
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # 用 commit SHA 前8位作为版本号
+          TAG="ui-replication-${GITHUB_SHA:0:8}"
+          APK="/tmp/sylab_build/build/app/outputs/flutter-apk/app-release.apk"
+          
+          # 创建 Release
+          gh release create "$TAG" \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "扣子UI复刻版 $TAG" \
+            --notes "扣子手机端UI复刻 - Android APK\n\nCommit: ${GITHUB_SHA}\nBuild: $(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            "$APK#SylabAI-UI-Replication.apk"
