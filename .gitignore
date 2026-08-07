@@ -1,20 +1,38 @@
-# Flutter
-.dart_tool/
-.packages
+# Build outputs
 build/
-.flutter-plugins
-.flutter-plugins-dependencies
-*.iml
-*.ipr
-*.iws
+*.apk
+*.ipa
+*.zip
+*.aar
+*.so
 
 # IDE
 .idea/
 .vscode/
+*.iml
+
+# Generated
+.dart_tool/
+.packages
+.flutter-plugins
+.flutter-plugins-dependencies
+pubspec.lock
+
+# Analysis/data
+coze_space.apk
+coze_apk_analysis/
+coze_assets_extracted/
+ios_artifact/
+ios_artifact.zip
+apk_release.zip
+release-apk.zip
+sylab-apk-release.zip
+SylabAI-v1.0-release.apk
+analyze_apk.py
+
+# Fonts (empty placeholders)
+assets/fonts/*.ttf
 
 # OS
 .DS_Store
 Thumbs.db
-
-# 敏感配置（不上传密钥）
-# lib/common/app_constant.dart 需要用户自行填写密钥

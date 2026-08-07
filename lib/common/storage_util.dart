@@ -1,64 +1,36 @@
 import 'package:hive/hive.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import '../model/message_model.dart';
-import '../model/conversation_model.dart';
 
-/// 存储工具 - 管理 Hive 本地数据持久化
 class StorageUtil {
-  /// 消息存储 Box（按会话ID分组）
+  // 全局唯一消息存储Box，强绑定MessageModel类型
   static late Box<MessageModel> chatBox;
 
-  /// 会话列表 Box
-  static late Box<ConversationModel> conversationBox;
+  // P0修复：补齐缺失的本地持久化表（Box）
+  // 对应AppConstant中声明的四个缓存目录，此前仅初始化chatBox，其余三个Box缺失导致读写崩溃
+  static late Box<Map> officeBox;   // 办公文档元数据表
+  static late Box<Map> logBox;      // 日志记录表
+  static late Box<Map> mediaCacheBox; // 媒体缓存表
 
-  /// 初始化 Hive 并注册所有适配器
+  // 初始化Hive+注册适配器（APP启动一次性调用）
   static Future<void> initHive() async {
     await Hive.initFlutter();
-
-    // 注册 MessageModel 适配器（typeId: 0）
+    // 注册模型适配器，解决反序列化失效问题
     if (!Hive.isAdapterRegistered(0)) {
       Hive.registerAdapter(MessageModelAdapter());
     }
-
-    // 注册 ConversationModel 适配器（typeId: 1）
-    if (!Hive.isAdapterRegistered(1)) {
-      Hive.registerAdapter(ConversationModelAdapter());
-    }
-
-    // 打开消息 Box
+    // P0修复：一次性打开全部所需的Hive Box，杜绝运行时"table not found"崩溃
     chatBox = await Hive.openBox<MessageModel>('chat_message_box');
-
-    // 打开会话 Box
-    conversationBox = await Hive.openBox<ConversationModel>('conversation_box');
+    officeBox = await Hive.openBox<Map>('office_file_box');
+    logBox = await Hive.openBox<Map>('app_log_box');
+    mediaCacheBox = await Hive.openBox<Map>('media_cache_box');
   }
 
-  /// 获取指定会话的所有消息（按时间排序）
-  static List<MessageModel> getMessagesForConversation(String conversationId) {
-    return chatBox.values
-        .where((msg) => msg.conversationId == conversationId)
-        .toList()
-      ..sort((a, b) => a.timeStamp.compareTo(b.timeStamp));
-  }
-
-  /// 删除指定会话的所有消息
-  static Future<void> deleteMessagesForConversation(String conversationId) async {
-    final keysToDelete = chatBox.keys
-        .where((key) {
-          final msg = chatBox.get(key);
-          return msg != null && msg.conversationId == conversationId;
-        })
-        .toList();
-    await chatBox.deleteAll(keysToDelete);
-  }
-
-  /// 保存消息到本地
-  static Future<void> saveMessage(MessageModel msg) async {
-    await chatBox.put(msg.timeStamp, msg);
-  }
-
-  /// 获取所有会话（按更新时间降序）
-  static List<ConversationModel> getAllConversations() {
-    return conversationBox.values.toList()
-      ..sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
+  /// P0修复：应用退出时安全关闭所有Box，释放文件锁
+  static Future<void> disposeAll() async {
+    await chatBox.close();
+    await officeBox.close();
+    await logBox.close();
+    await mediaCacheBox.close();
   }
 }

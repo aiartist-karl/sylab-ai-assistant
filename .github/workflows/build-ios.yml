@@ -5,9 +5,7 @@ on:
 
 jobs:
   build:
-    name: Build iOS IPA
     runs-on: macos-latest
-
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -15,67 +13,57 @@ jobs:
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
-          flutter-version: '3.44.8'
-          channel: 'stable'
+          flutter-version: '3.41.0'
+          channel: stable
           cache: true
 
-      - name: Create iOS platform scaffolding
-        run: flutter create . --org com.sylab --project-name sylab --platforms ios
-
-      - name: Get dependencies
-        run: flutter pub get
-
-      - name: Generate Hive adapters
-        run: flutter pub run build_runner build --delete-conflicting-outputs
-
-      - name: Install CocoaPods
-        run: cd ios && pod install --repo-update
-
-      - name: Build iOS with xcodebuild (no codesign)
+      - name: Create temp Flutter project and merge source
         run: |
-          cd ios
-          xcodebuild -workspace Runner.xcworkspace \
-            -scheme Runner \
-            -configuration Release \
-            -sdk iphoneos \
-            -derivedDataPath ../build/ios \
-            CODE_SIGNING_ALLOWED=NO \
-            CODE_SIGNING_REQUIRED=NO \
-            CODE_SIGN_IDENTITY="" \
-            COMPILER_INDEX_STORE_ENABLE=NO
+          cd /tmp
+          flutter create --org com.sylab --project-name sylab sylab_build --platforms ios
+          
+          cd sylab_build
+          
+          # 复制源码和配置
+          cp -r $GITHUB_WORKSPACE/lib/* lib/
+          cp $GITHUB_WORKSPACE/pubspec.yaml pubspec.yaml
+          
+          # 安装依赖
+          flutter pub get
+          
+          # Patch 所有插件包的 compileSdk 为 35
+          PUB_CACHE_DIR="${PUB_CACHE:-$HOME/.pub-cache}"
+          find "$PUB_CACHE_DIR" -path "*/android/build.gradle" -type f | while read f; do
+            sed -i '' 's/compileSdkVersion [0-9]*/compileSdkVersion 35/' "$f"
+            sed -i '' 's/compileSdk = [0-9]*/compileSdk = 35/' "$f"
+            sed -i '' 's/flutter.compileSdkVersion/35/' "$f"
+          done
+          find "$PUB_CACHE_DIR" -path "*/android/build.gradle.kts" -type f | while read f; do
+            sed -i '' 's/compileSdk = flutter.compileSdkVersion/compileSdk = 35/' "$f"
+            sed -i '' 's/compileSdk = [0-9]*/compileSdk = 35/' "$f"
+          done
+          
+          # 生成 Hive 适配器
+          flutter pub run build_runner build --delete-conflicting-outputs
+          
+          # 构建 iOS (不签名)
+          flutter build ios --release --no-codesign
 
-      - name: Package .app into IPA
+      - name: Create unsigned IPA
         run: |
+          cd /tmp/sylab_build
+          
+          # 创建 IPA 结构
           mkdir -p Payload
-          cp -R build/ios/Build/Products/Release-iphoneos/Runner.app Payload/
-          zip -r Sylab-iOS-Unsigned.ipa Payload
-          rm -rf Payload
+          cp -r build/ios/iphoneos/Runner.app Payload/
+          
+          # 打包为 IPA
+          zip -r SylabAI-v1.0-unsigned.ipa Payload/
+          
+          echo "IPA size: $(du -h SylabAI-v1.0-unsigned.ipa | cut -f1)"
 
       - name: Upload IPA artifact
         uses: actions/upload-artifact@v4
         with:
           name: release-ipa
-          path: Sylab-iOS-Unsigned.ipa
-          retention-days: 30
-
-      - name: Upload to multiple file hosts
-        run: |
-          echo "=== Uploading IPA to file hosting services ==="
-          
-          # Try tmpfiles.org
-          echo "Trying tmpfiles.org..."
-          TMPFILES_RESULT=$(curl -s -F "file=@Sylab-iOS-Unsigned.ipa" https://tmpfiles.org/api/v1/upload)
-          TMPFILES_URL=$(echo "$TMPFILES_RESULT" | python3 -c "import json,sys; d=json.load(sys.stdin); u=d.get('data',{}).get('url',''); print(u.replace('/tmpfiles.org/','/tmpfiles.org/dl/')) if u else print('')")
-          if [ -n "$TMPFILES_URL" ] && [ "$TMPFILES_URL" != "" ]; then
-            echo "tmpfiles.org URL: $TMPFILES_URL"
-            echo "DOWNLOAD_URL=$TMPFILES_URL" >> $GITHUB_STEP_SUMMARY
-          else
-            echo "tmpfiles.org failed, trying 0x0.st..."
-            ZEROX_RESULT=$(curl -s -F "file=@Sylab-iOS-Unsigned.ipa" https://0x0.st)
-            if [ -n "$ZEROX_RESULT" ]; then
-              echo "0x0.st URL: $ZEROX_RESULT"
-              echo "DOWNLOAD_URL=$ZEROX_RESULT" >> $GITHUB_STEP_SUMMARY
-            else
-              echo "All file hosts failed"
-            fi
-          fi
+          path: /tmp/sylab_build/SylabAI-v1.0-unsigned.ipa

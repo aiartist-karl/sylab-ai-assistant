@@ -1,7 +1,9 @@
 // GENERATED CODE - DO NOT MODIFY BY HAND
 
+part of 'message_model.dart';
+
 // **************************************************************************
-// MessageModelAdapter
+// HiveGenerator
 // **************************************************************************
 
 class MessageModelAdapter extends TypeAdapter<MessageModel> {
@@ -18,33 +20,19 @@ class MessageModelAdapter extends TypeAdapter<MessageModel> {
       role: fields[0] as String,
       content: fields[1] as String,
       timeStamp: fields[2] as int,
-      type: (fields[3] as String?) ?? 'text',
-      toolName: (fields[4] as String?) ?? '',
-      toolArgs: (fields[5] as String?) ?? '',
-      toolOutput: (fields[6] as String?) ?? '',
-      conversationId: (fields[7] as String?) ?? '',
     );
   }
 
   @override
   void write(BinaryWriter writer, MessageModel obj) {
-    writer.writeByte(8);
-    writer.writeByte(0);
-    writer.write(obj.role);
-    writer.writeByte(1);
-    writer.write(obj.content);
-    writer.writeByte(2);
-    writer.write(obj.timeStamp);
-    writer.writeByte(3);
-    writer.write(obj.type);
-    writer.writeByte(4);
-    writer.write(obj.toolName);
-    writer.writeByte(5);
-    writer.write(obj.toolArgs);
-    writer.writeByte(6);
-    writer.write(obj.toolOutput);
-    writer.writeByte(7);
-    writer.write(obj.conversationId);
+    writer
+      ..writeByte(3)
+      ..writeByte(0)
+      ..write(obj.role)
+      ..writeByte(1)
+      ..write(obj.content)
+      ..writeByte(2)
+      ..write(obj.timeStamp);
   }
 
   @override

@@ -3,15 +3,17 @@ import 'dart:io';
 // 根治编译必崩：补齐路径工具依赖，解决未定义函数报错
 import 'package:path_provider/path_provider.dart';
 import 'package:dio/dio.dart';
-// import removed - package not available
+import 'package:image_gallery_saver2_fixed/image_gallery_saver2_fixed.dart';
 import '../common/app_constant.dart';
 import '../common/log_util.dart';
 import '../common/permission_util.dart';
 
 class VideoGenerator {
-  // 硅基流动专属Dio，提交+轮询全程独立路由，杜绝路由错乱404
-  static Dio _initSfDio() {
-    return Dio(BaseOptions(
+  // P0修复：硅基流动Dio单例化，避免每次生成视频都新建Dio实例导致连接泄漏
+  static Dio? _sfDio;
+
+  static Dio _getSfDio() {
+    _sfDio ??= Dio(BaseOptions(
       baseUrl: AppConstant.sfBaseUrl,
       connectTimeout: AppConstant.connectTimeout,
       receiveTimeout: AppConstant.receiveTimeout,
@@ -20,17 +22,30 @@ class VideoGenerator {
         "Content-Type": "application/json",
       },
     ));
+    return _sfDio!;
+  }
+
+  /// P0修复：显式关闭连接池
+  static void dispose() {
+    _sfDio?.close(force: true);
+    _sfDio = null;
   }
 
   // 完整合规视频生成逻辑，适配官方2-5分钟生成时长
   static Future<String?> generateVideo(String prompt) async {
+    // P0修复：API密钥鉴权前置校验，封堵无认证路由
+    if (!AppConstant.isSfKeyValid()) {
+      LogUtil.e("视频生成", "认证失败：硅基流动API密钥未配置，请先在AppConstant中设置真实密钥");
+      return null;
+    }
+
     if (!await PermissionUtil.requestMediaPermission()) {
       LogUtil.e("视频生成", "无相册权限，生成失败");
       return null;
     }
 
     try {
-      final Dio sfDio = _initSfDio();
+      final Dio sfDio = _getSfDio();
       // 提交视频生成任务
       final Response submitRes = await sfDio.post(
         "/video/submit",
@@ -76,7 +91,7 @@ class VideoGenerator {
         final Directory cacheDir = await getTemporaryDirectory();
         final String videoPath = "${cacheDir.path}/ai_video_${DateTime.now().millisecondsSinceEpoch}.mp4";
         await sfDio.download(videoUrl, videoPath);
-        // Video saved to: $videoPath
+        await ImageGallerySaver.saveFile(videoPath);
         LogUtil.i("视频生成", "视频生成并保存成功：$videoUrl");
         return videoUrl;
       }
@@ -88,4 +103,3 @@ class VideoGenerator {
     }
   }
 }
-
