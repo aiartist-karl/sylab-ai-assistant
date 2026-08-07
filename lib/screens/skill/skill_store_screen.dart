@@ -66,7 +66,7 @@ class _SkillStoreScreenState extends State<SkillStoreScreen>
   Widget _buildSearchBar(bool isDark) {
     return Padding(
       padding: const EdgeInsets.fromLTRB(
-        AppSpacing.pagePadding, AppSpacing.md12,
+        AppSpacing.pagePadding, AppSpacing.ms12,
         AppSpacing.pagePadding, AppSpacing.sm8,
       ),
       child: Container(
@@ -176,7 +176,7 @@ class _SkillStoreScreenState extends State<SkillStoreScreen>
         // TODO: navigate to skill detail
       },
       child: Container(
-        padding: const EdgeInsets.all(AppSpacing.md12),
+        padding: const EdgeInsets.all(AppSpacing.ms12),
         decoration: BoxDecoration(
           color: isDark ? DarkThemeColors.bgPlus : LightThemeColors.bgPlus,
           borderRadius: BorderRadius.circular(AppRadius.card),

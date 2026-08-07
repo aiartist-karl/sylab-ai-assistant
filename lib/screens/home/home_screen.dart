@@ -300,8 +300,8 @@ class _HomeScreenState extends State<HomeScreen> {
         ),
       ),
       padding: EdgeInsets.only(
-        left: AppSpacing.md12,
-        right: AppSpacing.md12,
+        left: AppSpacing.ms12,
+        right: AppSpacing.ms12,
         top: AppSpacing.sm8,
         bottom: AppSpacing.lg33 + MediaQuery.of(context).padding.bottom,
       ),

@@ -164,8 +164,8 @@ class _PlanScreenState extends State<PlanScreen>
         // TODO: navigate to task detail
       },
       child: Container(
-        margin: const EdgeInsets.only(bottom: AppSpacing.md12),
-        padding: const EdgeInsets.all(AppSpacing.md12),
+        margin: const EdgeInsets.only(bottom: AppSpacing.ms12),
+        padding: const EdgeInsets.all(AppSpacing.ms12),
         decoration: BoxDecoration(
           color: isDark ? DarkThemeColors.bgPlus : LightThemeColors.bgPlus,
           borderRadius: BorderRadius.circular(AppRadius.card),
@@ -216,7 +216,7 @@ class _PlanScreenState extends State<PlanScreen>
             // === 进度条 ===
             // 高度6dp, 圆角3dp, accent填充, 300ms动画
             ClipRRect(
-              borderRadius: BorderRadius.circular(AppRadius.progressBarRadius),
+              borderRadius: BorderRadius.circular(AppSizes.progressBarRadius),
               child: LinearProgressIndicator(
                 value: progress,
                 minHeight: AppSizes.progressBarHeight,
