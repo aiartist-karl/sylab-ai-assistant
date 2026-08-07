@@ -251,30 +251,42 @@ class _SkillStoreScreenState extends State<SkillStoreScreen>
     );
   }
 
-  final List<Map<String, dynamic>> _mockSkills = [
+  static const _mockSkills = <Map<String, dynamic>>[
     {
       'title': 'PPT生成', 'desc': 'AI一键生成专业演示文稿',
-      'icon': Icons.slideshow_rounded, 'color': const Color(0xFF5147FF),
+      'icon': 'slideshow', 'color_val': 0xFF5147FF,
     },
     {
       'title': '周报助手', 'desc': '自动汇总本周工作生成周报',
-      'icon': Icons.article_rounded, 'color': const Color(0xFF3A96FF),
+      'icon': 'article', 'color_val': 0xFF3A96FF,
     },
     {
       'title': 'AI绘画', 'desc': '输入描述生成精美图片',
-      'icon': Icons.brush_rounded, 'color': const Color(0xFFFF6B6B),
+      'icon': 'brush', 'color_val': 0xFFFF6B6B,
     },
     {
       'title': '深度研究', 'desc': '多源信息搜集与分析报告',
-      'icon': Icons.search_rounded, 'color': const Color(0xFF22C55E),
+      'icon': 'search', 'color_val': 0xFF22C55E,
     },
     {
       'title': '代码助手', 'desc': '智能代码生成与调试',
-      'icon': Icons.code_rounded, 'color': const Color(0xFFF59E0B),
+      'icon': 'code', 'color_val': 0xFFF59E0B,
     },
     {
       'title': '翻译大师', 'desc': '多语言实时精准翻译',
-      'icon': Icons.translate_rounded, 'color': const Color(0xFF8B5CF6),
+      'icon': 'translate', 'color_val': 0xFF8B5CF6,
     },
   ];
+
+  static IconData _skillIcon(String name) {
+    switch (name) {
+      case 'slideshow': return Icons.slideshow_rounded;
+      case 'article': return Icons.article_rounded;
+      case 'brush': return Icons.brush_rounded;
+      case 'search': return Icons.search_rounded;
+      case 'code': return Icons.code_rounded;
+      case 'translate': return Icons.translate_rounded;
+      default: return Icons.apps_rounded;
+    }
+  }
 }

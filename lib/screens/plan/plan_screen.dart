@@ -186,10 +186,10 @@ class _PlanScreenState extends State<PlanScreen>
                   width: 32,
                   height: 32,
                   decoration: BoxDecoration(
-                    color: (task['color'] as Color).withOpacity(0.15),
+                    color: Color(task['color_val'] as int).withOpacity(0.15),
                     borderRadius: BorderRadius.circular(8),
                   ),
-                  child: Icon(task['icon'] as IconData, size: 18, color: task['color'] as Color),
+                  child: Icon(_taskIcon(task['icon'] as String), size: 18, color: Color(task['color_val'] as int)),
                 ),
                 const SizedBox(width: 10),
                 // 标题
@@ -362,15 +362,15 @@ class _PlanScreenState extends State<PlanScreen>
     );
   }
 
-  final Map<String, List<Map<String, dynamic>>> _mockTasks = {
+  static const _mockTasks = <String, List<Map<String, dynamic>>>{
     'running': [
       {
         'title': '30天涨粉计划',
         'status': 'running',
         'progress': 0.75,
         'currentStep': '第22天: 内容创作',
-        'icon': Icons.trending_up_rounded,
-        'color': const Color(0xFF5147FF),
+        'icon': 'trending_up',
+        'color_val': 0xFF5147FF,
         'hasNew': true,
         'subTasks': [
           {'title': '选题策划', 'status': '已完成', 'interrupted': false},
@@ -383,20 +383,20 @@ class _PlanScreenState extends State<PlanScreen>
         'status': 'running',
         'progress': 0.3,
         'currentStep': '收集数据中...',
-        'icon': Icons.auto_graph_rounded,
-        'color': const Color(0xFF3A96FF),
+        'icon': 'auto_graph',
+        'color_val': 0xFF3A96FF,
         'hasNew': false,
       },
     ],
-    'done': [],
+    'done': <Map<String, dynamic>>[],
     'paused': [
       {
         'title': '竞品分析报告',
         'status': 'paused',
         'progress': 0.5,
         'currentStep': '数据采集中断',
-        'icon': Icons.analytics_rounded,
-        'color': const Color(0xFFF59E0B),
+        'icon': 'analytics',
+        'color_val': 0xFFF59E0B,
         'hasNew': false,
         'subTasks': [
           {'title': '数据收集', 'status': '已完成', 'interrupted': false},
@@ -405,4 +405,13 @@ class _PlanScreenState extends State<PlanScreen>
       },
     ],
   };
+
+  static IconData _taskIcon(String name) {
+    switch (name) {
+      case 'trending_up': return Icons.trending_up_rounded;
+      case 'auto_graph': return Icons.auto_graph_rounded;
+      case 'analytics': return Icons.analytics_rounded;
+      default: return Icons.task_rounded;
+    }
+  }
 }

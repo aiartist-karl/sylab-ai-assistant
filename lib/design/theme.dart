@@ -120,7 +120,6 @@ class AppTheme {
     ),
     listTileTheme: ListTileThemeData(
       contentPadding: const EdgeInsets.symmetric(horizontal: 16),
-      minHeight: AppSizes.avatarLarge + 16,
       iconColor: LightThemeColors.fgSecondary,
       textColor: LightThemeColors.fgPrimary,
       titleTextStyle: AppTextStyles.body.copyWith(
@@ -280,7 +279,6 @@ class AppTheme {
     ),
     listTileTheme: ListTileThemeData(
       contentPadding: const EdgeInsets.symmetric(horizontal: 16),
-      minHeight: AppSizes.avatarLarge + 16,
       iconColor: DarkThemeColors.fgSecondary,
       textColor: DarkThemeColors.fgPrimary,
       titleTextStyle: AppTextStyles.body.copyWith(

@@ -117,11 +117,15 @@ class DeviceManagementScreen extends StatelessWidget {
                   width: 40,
                   height: 40,
                   decoration: BoxDecoration(
-                    color: (device['color'] as Color).withOpacity(0.15),
+                    color: Color(device['color_val'] as int).withOpacity(0.15),
                     borderRadius: BorderRadius.circular(10),
                   ),
-                  child: Icon(device['icon'] as IconData, size: 22,
-                    color: device['color'] as Color,
+                  child: Icon(
+                    device['icon'] == 'computer' ? Icons.computer_rounded :
+                    device['icon'] == 'phone' ? Icons.phone_android_rounded :
+                    Icons.memory_rounded,
+                    size: 22,
+                    color: Color(device['color_val'] as int),
                   ),
                 ),
                 const SizedBox(width: 12),
@@ -237,12 +241,12 @@ class DeviceManagementScreen extends StatelessWidget {
     );
   }
 
-  final List<Map<String, dynamic>> _mockDevices = [
+  static const _mockDevices = <Map<String, dynamic>>[
     {
       'name': '云电脑 - Ubuntu',
       'type': 'Cloud Computer',
-      'icon': Icons.computer_rounded,
-      'color': const Color(0xFF3A96FF),
+      'icon': 'computer',
+      'color_val': 0xFF3A96FF,
       'online': true,
       'cpu': '2核',
       'ram': '4G',
@@ -251,8 +255,8 @@ class DeviceManagementScreen extends StatelessWidget {
     {
       'name': '云手机 - Android 13',
       'type': 'Cloud Phone',
-      'icon': Icons.phone_android_rounded,
-      'color': const Color(0xFF22C55E),
+      'icon': 'phone',
+      'color_val': 0xFF22C55E,
       'online': true,
       'cpu': '2核',
       'ram': '6G',
@@ -261,8 +265,8 @@ class DeviceManagementScreen extends StatelessWidget {
     {
       'name': 'GPU 工作站',
       'type': 'GPU Server',
-      'icon': Icons.memory_rounded,
-      'color': const Color(0xFF5147FF),
+      'icon': 'memory',
+      'color_val': 0xFF5147FF,
       'online': false,
       'cpu': '8核',
       'ram': '32G',

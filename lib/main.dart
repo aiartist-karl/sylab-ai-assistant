@@ -7,6 +7,7 @@
 import 'package:flutter/material.dart';
 import 'design/theme.dart';
 import 'design/colors.dart';
+import 'design/semantic_colors.dart';
 import 'design/spacing.dart';
 import 'design/typography.dart';
 import 'animations/micro_interactions.dart';
