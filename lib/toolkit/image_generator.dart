@@ -1,7 +1,7 @@
 import 'dart:io';
 import 'dart:typed_data';
 import 'package:dio/dio.dart';
-import 'package:image_gallery_saver2_fixed/image_gallery_saver2_fixed.dart';
+// import 'package:image_gallery_saver2_fixed/image_gallery_saver2_fixed.dart'; // TODO: find iOS-compatible alternative
 import '../common/app_constant.dart';
 import '../common/log_util.dart';
 import '../common/permission_util.dart';

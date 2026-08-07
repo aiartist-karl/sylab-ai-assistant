@@ -17,8 +17,8 @@ dependencies:
   path_provider: ^2.1.0
   # 权限管理 (old code)
   permission_handler: ^11.3.0
-  # 图片保存 (old code)
-  image_gallery_saver2_fixed: ^2.0.6
+  # 图片保存 (old code) - REMOVED: no iOS podspec
+  # image_gallery_saver2_fixed: ^2.0.6
   # 文档生成 (old code)
   docx_creator: ^1.1.2
   # 日志 (old code)

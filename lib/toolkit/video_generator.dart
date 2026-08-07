@@ -91,7 +91,8 @@ class VideoGenerator {
         final Directory cacheDir = await getTemporaryDirectory();
         final String videoPath = "${cacheDir.path}/ai_video_${DateTime.now().millisecondsSinceEpoch}.mp4";
         await sfDio.download(videoUrl, videoPath);
-        await ImageGallerySaver.saveFile(videoPath);
+        // TODO: ImageGallerySaver.saveFile not available - needs iOS-compatible alternative
+        // await ImageGallerySaver.saveFile(videoPath);
         LogUtil.i("视频生成", "视频生成并保存成功：$videoUrl");
         return videoUrl;
       }
