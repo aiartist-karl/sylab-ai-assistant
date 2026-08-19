@@ -27,11 +27,11 @@ jobs:
         run: npm ci
       
       - name: Expo prebuild (Android)
-        run: npx expo prebuild --platform android --clean
+        run: npx expo prebuild --platform android
       
       - name: Build APK (debug)
         working-directory: ./android
-        run: ./gradlew assembleDebug
+        run: chmod +x gradlew && ./gradlew assembleDebug
       
       - name: Upload APK
         uses: actions/upload-artifact@v4
@@ -54,14 +54,18 @@ jobs:
         run: npm ci
       
       - name: Expo prebuild (iOS)
-        run: npx expo prebuild --platform ios --clean
+        run: npx expo prebuild --platform ios
       
-      - name: Build iOS (no sign)
+      - name: Install CocoaPods
+        working-directory: ./ios
+        run: pod install
+      
+      - name: Build iOS (unsigned)
         working-directory: ./ios
         run: |
           xcodebuild \
-            -workspace sylab.xcworkspace \
-            -scheme sylab \
+            -workspace CozeApp.xcworkspace \
+            -scheme CozeApp \
             -configuration Release \
             -sdk iphoneos \
             -derivedDataPath build \
@@ -73,7 +77,7 @@ jobs:
       - name: Create unsigned IPA
         run: |
           mkdir -p Payload
-          cp -r ios/build/Build/Products/Release-iphoneos/sylab.app Payload/
+          cp -r ios/build/Build/Products/Release-iphoneos/CozeApp.app Payload/
           zip -r sylab-unsigned.ipa Payload/
       
       - name: Upload IPA
