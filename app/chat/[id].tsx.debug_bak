@@ -1,0 +1,756 @@
+import React, { useEffect, useRef, useState } from 'react';
+import { View, Text, FlatList, KeyboardAvoidingView, Platform, StyleSheet, ActivityIndicator, TouchableOpacity, Modal, Clipboard, Alert, Dimensions, StatusBar, TextInput } from 'react-native';
+import NetInfo from '@react-native-community/netinfo';
+import { useLocalSearchParams, useNavigation, useRouter } from 'expo-router';
+import { Colors, Spacing, BorderRadius, FontSize } from '../../src/constants/theme';
+import { useChatStore } from '../../src/store/chat';
+import { useAuthStore } from '../../src/store/auth';
+import { Storage } from '../../src/utils/storage';
+import { chatApi } from '../../src/api/chat';
+import { filesApi } from '../../src/api/files';
+import { sendMessageStream } from '../../src/api/sse';
+import { MessageBubble } from '../../src/components/MessageBubble';
+import { ChatInput, getPendingFiles, clearPendingFiles } from '../../src/components/ChatInput';
+import { EmptyState } from '../../src/components/EmptyState';
+import { Ionicons } from '@expo/vector-icons';
+import type { ChatMessage } from '../../src/types/api';
+
+
+// Module-level message tracker - survives component remounts
+let _sessionMessages: any[] = [];
+// Nuclear backup: Map<convId, messages[]> - survives any reset
+const _messageBackup = new Map<string, any[]>();
+
+const DEFAULT_BOT_ID = '7669580347859795968';
+const DEFAULT_BOT_NAME = 'sylab AI';
+
+const stripMarkdown = (text: string): string => {
+  if (!text) return "";
+  return text
+    .replace(/#{1,6}\s*/g, "")
+    .replace(/\*\*(.+?)\*\*/g, "$1")
+    .replace(/\*(.+?)\*/g, "$1")
+    .replace(/`(.+?)`/g, "$1")
+    .replace(/\[(.+?)\]\(.+?\)/g, "$1")
+    .replace(/!\[.*?\]\(.+?\)/g, "")
+    .replace(/^[-*+]\s+/gm, "")
+    .replace(/\n+/g, " ")
+    .trim();
+};
+
+const formatTime = (ts: any): string => {
+  if (!ts) return "";
+  const num = Number(ts);
+  if (isNaN(num) || num === 0) return "";
+  const ms = num < 1e12 ? num * 1000 : num;
+  const date = new Date(ms);
+  if (isNaN(date.getTime())) return "";
+  const now = new Date();
+  const isToday = date.toDateString() === now.toDateString();
+  const isThisYear = date.getFullYear() === now.getFullYear();
+  if (isToday) {
+    const h = date.getHours().toString().padStart(2, "0");
+    const m = date.getMinutes().toString().padStart(2, "0");
+    return `${h}:${m}`;
+  }
+  if (isThisYear) {
+    const mo = (date.getMonth() + 1).toString().padStart(2, "0");
+    const d = date.getDate().toString().padStart(2, "0");
+    return `${mo}/${d}`;
+  }
+  const y = date.getFullYear();
+  const mo = (date.getMonth() + 1).toString().padStart(2, "0");
+  const d = date.getDate().toString().padStart(2, "0");
+  return `${y}/${mo}/${d}`;
+};
+
+export default function ChatDetailScreen() {
+  const { id, bot_id } = useLocalSearchParams<{ id: string; bot_id?: string }>();
+  const navigation = useNavigation();
+  const router = useRouter();
+  const flatListRef = useRef<FlatList>(null);
+  const [showScrollBtn, setShowScrollBtn] = useState(false);
+  const streamRef = useRef<{ abort: () => void } | null>(null);
+
+  const scrollToBottom = () => {
+    flatListRef.current?.scrollToEnd({ animated: true });
+  };
+
+  const handleScroll = (event: any) => {
+    const { layoutMeasurement, contentOffset, contentSize } = event.nativeEvent;
+    const distanceFromBottom = contentSize.height - contentOffset.y - layoutMeasurement.height;
+    setShowScrollBtn(distanceFromBottom > 200);
+  };
+
+
+  const { user, patToken } = useAuthStore();
+  const {
+    messages, isStreaming, streamingContent, streamingMessageId,
+    toolCalls, error,
+    setMessages, appendDelta, appendToolCall, finishStreaming,
+    clearStreaming, setError, startStreaming,
+  } = useChatStore();
+
+  const [loading, setLoading] = useState(true);
+  const [botName, setBotName] = useState(DEFAULT_BOT_NAME);
+  const [conversationId, setConversationId] = useState<string | null>(null);
+  const [currentBotId, setCurrentBotId] = useState<string>(
+    bot_id || DEFAULT_BOT_ID
+  );
+  const [initError, setInitError] = useState<string | null>(null);
+
+  // Long press action menu
+  const [longPressMenu, setLongPressMenu] = useState<{
+    visible: boolean;
+    message: ChatMessage | null;
+  }>({ visible: false, message: null });
+
+  // Quote state
+  const [quotedMessage, setQuotedMessage] = useState<ChatMessage | null>(null);
+
+  // Message queue for continuous sending
+  const messageQueueRef = useRef<Array<{ text: string; files?: any[]; fileIds?: string[] }>>([]);
+  // Track which user message each AI reply is responding to
+  const [replyToMap, setReplyToMap] = useState<Record<string, { role: string; content: string }>>({});
+  const lastUserMsgRef = useRef<ChatMessage | null>(null);
+  const pendingFilesRef = useRef<Array<{blob: Blob, name: string, type: string}>>([]);
+
+  // Pagination
+  const [page, setPage] = useState(1);
+  const [hasMore, setHasMore] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const loadingMoreRef = useRef(false);
+
+  // Network status
+  const [isOffline, setIsOffline] = useState(false);
+
+  // Message search
+  const [showSearch, setShowSearch] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+
+
+  useEffect(() => {
+    const unsub = NetInfo.addEventListener(state => {
+      setIsOffline(!state.isConnected);
+    });
+    return () => unsub();
+  }, []);
+
+  const loadMoreMessages = async () => {
+    if (loadingMoreRef.current || !hasMore || isNewChat) return;
+    const convId = conversationId || id || "";
+    if (!convId) return;
+    
+    loadingMoreRef.current = true;
+    setLoadingMore(true);
+    try {
+      const nextPage = page + 1;
+      const result = await chatApi.getMessages(convId, { page_num: nextPage, page_size: 50 });
+      const msgs = (result.items || []).reverse();
+      if (msgs.length === 0) {
+        setHasMore(false);
+      } else {
+        setMessages((prev: ChatMessage[]) => {
+          const validMsgs = msgs.filter(m => m && m.id);
+          const existingIds = new Set(prev.map(m => m.id).filter(Boolean));
+          const newMsgs = validMsgs.filter(m => !existingIds.has(m.id));
+          return newMsgs.length > 0 ? [...newMsgs, ...prev] : prev;
+        });
+        setPage(nextPage);
+      }
+    } catch (e) {
+      console.warn('[Chat] loadMore failed:', e);
+    } finally {
+      loadingMoreRef.current = false;
+      setLoadingMore(false);
+    }
+  };
+
+
+
+
+  const isNewChat = !!bot_id && bot_id !== id;
+
+  useEffect(() => {
+    navigation.setOptions({
+      title: botName,
+      headerRight: () => (
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+          <TouchableOpacity onPress={() => setShowSearch(!showSearch)}>
+            <Ionicons name={showSearch ? "close" : "search"} size={22} color="#6030ff" />
+          </TouchableOpacity>
+          <TouchableOpacity onPress={() => router.push(`/projects/${conversationId || id}`)}>
+            <Ionicons name="folder" size={22} color="#6030ff" />
+          </TouchableOpacity>
+        </View>
+      ),
+    });
+  }, [botName, conversationId, id]);
+
+  // Track last processed conversation to avoid re-fetching when user changes
+  const lastProcessedConvRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (!id) return;
+    // Wait for auth to restore before loading messages
+    if (!user) { setLoading(true); return; }
+    // Skip if already loaded this conversation
+    if (lastProcessedConvRef.current === id) return;
+    lastProcessedConvRef.current = id;
+
+    // Clear old messages when switching conversations
+    setMessages([]);
+    _sessionMessages = [];
+    setPage(1);
+    setHasMore(true);
+    (async () => {
+      try {
+        if (isNewChat) {
+          setCurrentBotId(bot_id!);
+          try {
+            const conv = await chatApi.createConversation(bot_id!, '', user.id);
+            const convId = conv?.id || conv?.conversation_id || '';
+            if (convId) {
+              setConversationId(convId);
+              setMessages([]);
+              _sessionMessages = [];
+            } else {
+              setInitError('创建对话失败');
+            }
+          } catch (e: any) {
+            setInitError('创建对话失败: ' + (e.message || '未知错误'));
+          }
+        } else {
+          setConversationId(id);
+          try {
+            const result = await chatApi.getMessages(id, { page_num: 1, page_size: 50 });
+            const msgs = result.items || [];
+            msgs.reverse();
+            setMessages(msgs);
+            _sessionMessages = msgs;
+            if (id) _messageBackup.set(id as string, msgs);
+          } catch {
+            setMessages([]);
+            _sessionMessages = [];
+          }
+        }
+      } catch {
+        setMessages([]);
+        _sessionMessages = [];
+      } finally {
+        setLoading(false);
+      }
+    })();
+    return () => { clearStreaming(); };
+  }, [id, user]);
+
+  // Auto-scroll useEffect removed to prevent infinite scroll loop
+
+  const handleLongPress = (message: ChatMessage) => {
+    setLongPressMenu({ visible: true, message });
+  };
+
+  const closeMenu = () => {
+    setLongPressMenu({ visible: false, message: null });
+  };
+
+  const handleCopy = async () => {
+    if (!longPressMenu.message) return;
+    const plainText = stripMarkdown(longPressMenu.message.content || '');
+    try {
+      if (Platform.OS === 'web') {
+        await navigator.clipboard.writeText(plainText);
+      } else {
+        Clipboard.setString(plainText);
+      }
+    } catch {
+      // silent fail
+    }
+    closeMenu();
+  };
+
+  const handleQuote = () => {
+    if (!longPressMenu.message) return;
+    setQuotedMessage(longPressMenu.message);
+    closeMenu();
+  };
+
+
+
+  const processQueue = async () => {
+    if (messageQueueRef.current.length === 0 || isStreaming) return;
+    const next = messageQueueRef.current.shift()!;
+    await doSend(next.text, next.files, next.fileIds);
+  };
+
+  const handleSend = async (text: string, _files?: any[], fileIds?: string[]) => {
+    if (!text.trim() || !patToken) return;
+    
+    // If already streaming, queue the message
+    if (isStreaming) {
+      messageQueueRef.current.push({ text, files: _files, fileIds });
+      // Still add user message to display immediately
+      const userMsg: ChatMessage = {
+        id: `msg_${Date.now()}`,
+        conversation_id: conversationId || id || '',
+        role: 'user',
+        type: 'text',
+        content: text,
+        content_type: 'text',
+        created_at: String(Date.now()),
+        updated_at: String(Date.now()),
+      };
+      lastUserMsgRef.current = userMsg;
+      setMessages([...messages, userMsg]);
+      _sessionMessages = [..._sessionMessages, userMsg];
+      return;
+    }
+    
+    await doSend(text, _files, fileIds);
+  };
+
+  const doSend = async (text: string, _files?: any[], fileIds?: string[]) => {
+
+    let finalContent = text;
+    if (quotedMessage) {
+      const quoteRole = quotedMessage.role === 'user' ? '我' : 'AI';
+      const quotePreview = stripMarkdown(quotedMessage.content || '').substring(0, 300);
+      finalContent = `[引用${quoteRole}的消息]：「${quotePreview}」\n\n${text}`;
+      setQuotedMessage(null);
+    }
+
+    const userMsg: ChatMessage = {
+      id: `msg_${Date.now()}`,
+      conversation_id: conversationId || id || '',
+      role: 'user',
+      type: 'text',
+      content: finalContent,
+      content_type: 'text',
+      created_at: String(Date.now()),
+      updated_at: String(Date.now()),
+    };
+    lastUserMsgRef.current = userMsg;
+    setMessages([...messages, userMsg]);
+      _sessionMessages = [..._sessionMessages, userMsg];
+      // Save to nuclear backup immediately
+      const backupKey = conversationId || id || 'pending';
+      const existing = _messageBackup.get(backupKey) || [];
+      _messageBackup.set(backupKey, [...existing, userMsg]);
+    startStreaming();
+
+    let aiContent = finalContent;
+    const currentConvId = conversationId || id;
+    if (currentConvId) {
+      try {
+        const fileList = await filesApi.list(currentConvId);
+        if (fileList.files && fileList.files.length > 0) {
+          const fileSummary = fileList.files.map(f =>
+            `- ${f.name} (${f.type}, ${f.size} bytes)`
+          ).join("\n");
+          aiContent = finalContent + "\n\n[Available project files in this conversation]\n" + fileSummary + "\n[To read file content, ask the user to share it or check project files]";
+        }
+      } catch {}
+    }
+
+    // Build additional_messages: combine files + text into object_string for multimodal support
+    const additionalMsgs: Array<{ role: string; content: string; content_type: string }> = [];
+    if (fileIds && fileIds.length > 0) {
+      // Use object_string (mix) format to send files + text together as one message
+      const contentParts: Array<{ type: string; text?: string; file_id?: string }> = [];
+      for (const fid of fileIds) {
+        contentParts.push({ type: 'file', file_id: fid });
+      }
+      contentParts.push({ type: 'text', text: aiContent });
+      additionalMsgs.push({
+        role: 'user',
+        content: JSON.stringify(contentParts),
+        content_type: 'object_string',
+      });
+    } else {
+      additionalMsgs.push({
+        role: 'user',
+        content: aiContent,
+        content_type: 'text',
+      });
+    }
+
+    // === LOCAL CAPTURE: immune to component remounts and store resets ===
+    const localUserContent = finalContent;
+    const localConvId = conversationId;
+    let localAiAccum = "";
+
+    streamRef.current = sendMessageStream(
+      {
+        bot_id: currentBotId,
+        user_id: user?.id || 'app_user',
+        conversation_id: conversationId || undefined,
+        additional_messages: additionalMsgs,
+        stream: true,
+        auto_save_history: true,
+      },
+      patToken || "",
+      {
+        onDelta: (delta) => {
+          localAiAccum += delta;
+          appendDelta(delta);
+        },
+        onToolCall: (name, args) => appendToolCall(name, args),
+        onComplete: (chatId, convId) => {
+          try {
+          // Use closure-captured content (immune to store/state resets)
+          const capturedAiContent = localAiAccum || useChatStore.getState().streamingContent;
+          const aiMsgId = chatId || `msg_${Date.now()}`;
+          finishStreaming(aiMsgId);
+          console.log("[Chat] onComplete: localAi:", localAiAccum.length, "localUser:", localUserContent.length, "sessionMsgs:", _sessionMessages.length);
+          // Save reply-to mapping
+          if (lastUserMsgRef.current) {
+            setReplyToMap(prev => ({
+              ...prev,
+              [aiMsgId]: { role: lastUserMsgRef.current!.role, content: lastUserMsgRef.current!.content || '' },
+            }));
+          }
+          // Process next queued message
+          setTimeout(() => processQueue(), 500);
+          // Determine the real conversation ID (prefer server-returned convId)
+          const realConvId = convId || conversationId || id;
+          if (convId && !conversationId) {
+            setConversationId(convId);
+          }
+          // Upload pending files (from new conversation with no convId at send time)
+          if (realConvId) {
+            const pendingFiles = getPendingFiles();
+            if (pendingFiles.length > 0) {
+              for (const pf of pendingFiles) {
+                fetch('http://36.137.84.216:9091/project-files/api/files/upload', {
+                  method: 'POST',
+                  headers: {
+                    'X-Conversation-Id': realConvId,
+                    'X-File-Name': pf.name,
+                    'Content-Type': pf.type,
+                  },
+                  body: pf.blob,
+                }).catch(e => console.warn('[Chat] Pending file upload failed:', e));
+              }
+              clearPendingFiles();
+            }
+            // Also try sync for backward compatibility
+            const tempId = id as string;
+            if (tempId && tempId !== realConvId) {
+              filesApi.sync(tempId, realConvId).then(result => {
+                if (result.synced > 0) {
+                  console.log(`[Chat] Synced ${result.synced} files from ${tempId} to ${realConvId}`);
+                }
+              }).catch((e: any) => console.warn('[Chat] File sync failed:', e.message));
+            }
+          }
+          const saveConvId = realConvId;
+          // === IMMEDIATE SAVE using closure-captured variables ===
+          if (saveConvId) {
+            const saveMessages: Array<{role: string; content: string; created_at: string}> = [];
+            // User message from closure (always available)
+            if (localUserContent) {
+              saveMessages.push({ role: 'user', content: localUserContent, created_at: String(Date.now()) });
+            }
+            // AI message from closure accumulator
+            if (capturedAiContent) {
+              saveMessages.push({ role: 'assistant', content: capturedAiContent, created_at: String(Date.now()) });
+            }
+            if (saveMessages.length > 0) {
+              console.log("[Chat] Saving chat log. convId:", saveConvId, "msgs:", saveMessages.length, "userLen:", localUserContent.length, "aiLen:", capturedAiContent.length);
+              filesApi.saveChatLog(saveConvId, saveMessages).catch(e => {
+                console.warn("[Chat] Immediate save failed:", e);
+              });
+            }
+            // Backup: fetch from Coze API after 3s to ensure complete history
+            setTimeout(async () => {
+              try {
+                const msgResult = await chatApi.getMessages(saveConvId, { page_num: 1, page_size: 50 });
+                const apiMessages = (msgResult.items || []).filter((m: any) => m.role === 'user' || m.role === 'assistant');
+                if (apiMessages.length > 0) {
+                  const apiLogMessages = apiMessages.map((m: any) => ({
+                    role: m.role,
+                    content: m.content || '',
+                    created_at: m.created_at || String(Date.now()),
+                  }));
+                  await filesApi.saveChatLog(saveConvId, apiLogMessages);
+                  console.log("[Chat] API backup save done. msgs:", apiLogMessages.length);
+                }
+              } catch (e) {
+                console.warn("[Chat] API backup failed:", e);
+              }
+            }, 3000);
+          }
+          // Auto-name conversation from first user message (using closure variable)
+          if (saveConvId && localUserContent) {
+            const autoName = stripMarkdown(localUserContent).substring(0, 30);
+            if (autoName) {
+              chatApi.updateConversation(saveConvId, { name: autoName }).catch(() => {});
+            }
+          }
+          } catch (e) { console.error("[Chat] onComplete error:", e); }
+        },
+        onError: (err) => {
+          setError(err.message);
+          finishStreaming(`msg_${Date.now()}`);
+        },
+        onStatus: (status) => console.log('[SSE status]', status),
+      }
+    );
+  };
+
+  const handleStop = () => {
+    streamRef.current?.abort();
+    clearStreaming();
+  };
+
+  if (loading) {
+    return (
+      <View style={styles.loading}>
+        <ActivityIndicator size="large" color={Colors.primary} />
+      </View>
+    );
+  }
+
+  const renderItem = ({ item }: { item: ChatMessage }) => {
+    if (!item || !item.id) return null;
+    return (
+      <MessageBubble 
+        message={item} 
+        onLongPress={handleLongPress} 
+        replyToMessage={replyToMap[item.id] || null}
+      />
+    );
+  };
+
+  const renderFooter = () => {
+    if (!isStreaming || !streamingContent) return null;
+    return (
+      <MessageBubble
+        message={{
+          id: streamingMessageId || '',
+          conversation_id: conversationId || id || '',
+          role: 'assistant',
+          type: 'text',
+          content: streamingContent,
+          content_type: 'markdown',
+          tool_calls: toolCalls.length > 0 ? toolCalls : undefined,
+          created_at: String(Date.now()),
+          updated_at: String(Date.now()),
+        }}
+        replyToMessage={lastUserMsgRef.current ? { role: lastUserMsgRef.current.role, content: lastUserMsgRef.current.content || '' } : null}
+      />
+    );
+  };
+
+  return (
+    <View style={styles.container}>
+
+
+      {showSearch && (
+        <View style={styles.searchBar}>
+          <Ionicons name="search-outline" size={16} color={Colors.textTertiary} style={{ marginRight: 6 }} />
+          <TextInput
+            style={styles.searchInput}
+            placeholder="搜索消息..."
+            placeholderTextColor={Colors.textTertiary}
+            value={searchQuery}
+            onChangeText={setSearchQuery}
+            autoFocus
+          />
+          {searchQuery ? (
+            <Text style={styles.searchCount}>
+              {messages.filter(m => (m.content || '').toLowerCase().includes(searchQuery.toLowerCase())).length} 条结果
+            </Text>
+          ) : null}
+        </View>
+      )}
+      {isOffline && (
+        <View style={styles.offlineBar}>
+          <Ionicons name="cloud-offline-outline" size={14} color="#fff" />
+          <Text style={styles.offlineText}> 网络已断开，消息可能无法发送</Text>
+        </View>
+      )}
+      {initError ? (
+        <View style={styles.errorBar}>
+          <Ionicons name="alert-circle" size={14} color={Colors.danger} />
+          <Text style={styles.errorText}> {initError}</Text>
+        </View>
+      ) : null}
+
+      {messages.length === 0 && !isStreaming ? (
+        <View style={styles.emptyArea}>
+          <EmptyState iconName="chatbubbles" title={`和 ${botName} 开始对话`} subtitle="输入消息开始聊天" />
+        </View>
+      ) : (
+        <FlatList
+          style={{ flex: 1 }}
+          ref={flatListRef}
+          data={(searchQuery ? messages.filter((m: any) => m && (m.content || "").toLowerCase().includes(searchQuery.toLowerCase())) : messages).filter((m: any) => m && m.id)}
+          renderItem={renderItem}
+          keyExtractor={(item) => item?.id || `msg_${Math.random()}`}
+          contentContainerStyle={styles.listContent}
+          ListFooterComponent={renderFooter}
+          ListHeaderComponent={loadingMore ? (
+            <View style={{ padding: 16, alignItems: 'center' }}>
+              <ActivityIndicator size="small" color={Colors.primary} />
+              <Text style={{ fontSize: 12, color: Colors.textTertiary, marginTop: 4 }}>加载中...</Text>
+            </View>
+          ) : !hasMore && messages.length > 0 ? (
+            <View style={{ padding: 16, alignItems: 'center' }}>
+              <Text style={{ fontSize: 12, color: Colors.textTertiary }}>没有更多消息了</Text>
+            </View>
+          ) : null}
+          onEndReached={loadMoreMessages}
+          onEndReachedThreshold={0.3}
+          showsVerticalScrollIndicator={false}
+          inverted={false}
+          onScroll={handleScroll}
+          scrollEventThrottle={100}
+          /* maintainVisibleContentPosition not reliable on web, removed */
+        />
+      )}
+
+      {error ? (
+        <View style={styles.errorBar}>
+          <Ionicons name="alert-circle" size={14} color={Colors.danger} />
+          <Text style={styles.errorText}> {error}</Text>
+        </View>
+      ) : null}
+
+      {/* Scroll to bottom button */}
+      {showScrollBtn && (
+        <TouchableOpacity
+          onPress={scrollToBottom}
+          style={{
+            position: 'absolute',
+            right: 16,
+            bottom: 80,
+            width: 40,
+            height: 40,
+            borderRadius: 20,
+            backgroundColor: 'rgba(0,0,0,0.3)',
+            justifyContent: 'center',
+            alignItems: 'center',
+            zIndex: 10,
+            elevation: 5,
+            shadowColor: '#000',
+            shadowOffset: { width: 0, height: 2 },
+            shadowOpacity: 0.2,
+            shadowRadius: 4,
+          }}
+          activeOpacity={0.7}
+        >
+          <Ionicons name="chevron-down" size={22} color="#fff" />
+        </TouchableOpacity>
+      )}
+
+      <ChatInput
+        onSend={handleSend}
+        onStop={handleStop}
+        isStreaming={isStreaming}
+        placeholder={`给 ${botName} 发消息...`}
+        conversationId={conversationId || id}
+        patToken={patToken || undefined}
+        quotedMessage={quotedMessage}
+        onClearQuote={() => setQuotedMessage(null)}
+      />
+
+      {/* Long press action menu */}
+      <Modal
+        visible={longPressMenu.visible}
+        transparent
+        animationType="fade"
+        onRequestClose={closeMenu}
+      >
+        <TouchableOpacity
+          style={styles.menuOverlay}
+          activeOpacity={1}
+          onPress={closeMenu}
+        >
+          <View style={styles.actionMenu}>
+            <TouchableOpacity style={styles.menuItem} onPress={handleQuote}>
+              <Ionicons name="return-down-back-outline" size={18} color={Colors.primary} />
+              <Text style={styles.menuItemText}>引用</Text>
+            </TouchableOpacity>
+            <View style={styles.menuDivider} />
+            <TouchableOpacity style={styles.menuItem} onPress={handleCopy}>
+              <Ionicons name="copy-outline" size={18} color={Colors.text} />
+              <Text style={styles.menuItemText}>复制</Text>
+            </TouchableOpacity>
+
+          </View>
+        </TouchableOpacity>
+      </Modal>
+
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  container: { flex: 1, backgroundColor: '#fff' },
+  loading: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+  emptyArea: { flex: 1, justifyContent: 'center' },
+  listContent: { paddingVertical: Spacing.md },
+  errorBar: {
+    flexDirection: 'row', alignItems: 'center',
+    backgroundColor: '#fef2f2',
+    paddingHorizontal: Spacing.md, paddingVertical: Spacing.xs,
+    borderTopWidth: 0.5, borderTopColor: '#fecaca',
+  },
+  errorText: { fontSize: 12, color: Colors.danger, marginLeft: 4 },
+  // Menu
+  menuOverlay: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: 'rgba(0,0,0,0.3)',
+  },
+  actionMenu: {
+    backgroundColor: '#fff',
+    borderRadius: 14,
+    paddingVertical: 4,
+    minWidth: 160,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 12,
+    elevation: 8,
+  },
+  menuItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    paddingVertical: 14,
+    gap: 12,
+  },
+  menuItemText: {
+    fontSize: 16,
+    color: Colors.text,
+  },
+
+
+  searchBar: {
+    flexDirection: 'row', alignItems: 'center',
+    backgroundColor: Colors.backgroundSecondary,
+    marginHorizontal: Spacing.md, marginVertical: Spacing.xs,
+    paddingHorizontal: Spacing.md, height: 36,
+    borderRadius: BorderRadius.full,
+  },
+  searchInput: { flex: 1, fontSize: FontSize.sm, color: Colors.text, paddingVertical: 0 },
+  searchCount: { fontSize: FontSize.xs, color: Colors.textTertiary, marginLeft: 6 },
+  offlineBar: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    backgroundColor: '#ef4444', paddingVertical: 6, paddingHorizontal: Spacing.md,
+  },
+  offlineText: { color: '#fff', fontSize: 12 },
+  menuDivider: {
+    height: 0.5,
+    backgroundColor: '#e5e5e5',
+    marginHorizontal: 16,
+  },
+
+});
+
+
+
+

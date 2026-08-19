@@ -1,0 +1,163 @@
+import React, { useState, useEffect } from 'react';
+import { View, Text, FlatList, TouchableOpacity, StyleSheet, RefreshControl, TextInput } from 'react-native';
+import { useRouter } from 'expo-router';
+import { Colors, Spacing, BorderRadius, FontSize, Shadows } from '../../src/constants/theme';
+import { chatApi } from '../../src/api/chat';
+import { EmptyState } from '../../src/components/EmptyState';
+import { Ionicons } from '@expo/vector-icons';
+import type { ConversationInfo } from '../../src/types/api';
+
+// 用原生 Date 替代 dayjs，避免 Metro bundler 兼容性问题
+const formatTime = (ts: any): string => {
+  if (!ts) return '';
+  const num = Number(ts);
+  if (isNaN(num) || num === 0) return '';
+  // API 返回 Unix 秒级时间戳
+  const ms = num < 1e12 ? num * 1000 : num;
+  const date = new Date(ms);
+  if (isNaN(date.getTime())) return '';
+
+  const now = new Date();
+  const isToday = date.toDateString() === now.toDateString();
+  const isThisYear = date.getFullYear() === now.getFullYear();
+
+  if (isToday) {
+    const h = date.getHours().toString().padStart(2, '0');
+    const m = date.getMinutes().toString().padStart(2, '0');
+    return `${h}:${m}`;
+  }
+  if (isThisYear) {
+    const mo = (date.getMonth() + 1).toString().padStart(2, '0');
+    const d = date.getDate().toString().padStart(2, '0');
+    return `${mo}/${d}`;
+  }
+  const y = date.getFullYear();
+  const mo = (date.getMonth() + 1).toString().padStart(2, '0');
+  const d = date.getDate().toString().padStart(2, '0');
+  return `${y}/${mo}/${d}`;
+};
+
+export default function ChatListScreen() {
+  const router = useRouter();
+  const [conversations, setConversations] = useState<ConversationInfo[]>([]);
+  const [searchText, setSearchText] = useState('');
+  const [refreshing, setRefreshing] = useState(false);
+
+  const fetchConversations = async () => {
+    try {
+      const result = await chatApi.listConversations('7669580347859795968', { page_num: 1, page_size: 50 });
+      setConversations(result.items || []);
+    } catch (e) {
+      console.warn('[ChatList] fetchConversations error:', e);
+      setConversations([]);
+    } finally {
+      setRefreshing(false);
+    }
+  };
+
+  useEffect(() => { fetchConversations(); }, []);
+
+  const filtered = conversations.filter((c) =>
+    !searchText || (c.name && c.name.toLowerCase().includes(searchText.toLowerCase()))
+  );
+
+  const renderConversation = ({ item }: { item: ConversationInfo }) => (
+    <TouchableOpacity
+      style={styles.item}
+      onPress={() => router.push(`/chat/${item.id}`)}
+      activeOpacity={0.7}
+    >
+      <View style={styles.avatar}>
+        <Ionicons name="chatbubble-ellipses" size={20} color={Colors.primary} />
+      </View>
+      <View style={styles.content}>
+        <View style={styles.topRow}>
+          <Text style={styles.name} numberOfLines={1}>{item.name || '未命名对话'}</Text>
+          <Text style={styles.time}>
+            {formatTime(item.created_at)}
+          </Text>
+        </View>
+        <View style={styles.bottomRow}>
+          <Text style={styles.lastMsg} numberOfLines={1}>
+            {item.last_message?.content || '暂无消息'}
+          </Text>
+        </View>
+      </View>
+    </TouchableOpacity>
+  );
+
+  return (
+    <View style={styles.container}>
+      <View style={styles.searchBar}>
+        <Ionicons name="search-outline" size={18} color={Colors.textTertiary} style={{ marginRight: 8 }} />
+        <TextInput
+          style={styles.searchInput}
+          placeholder="搜索对话..."
+          placeholderTextColor={Colors.textTertiary}
+          value={searchText}
+          onChangeText={setSearchText}
+        />
+      </View>
+
+      {filtered.length === 0 ? (
+        <EmptyState iconName="chatbubbles" title="还没有对话" subtitle="选择一个 Agent 开始聊天" />
+      ) : (
+        <FlatList
+          data={filtered}
+          renderItem={renderConversation}
+          keyExtractor={(item) => item.id}
+          showsVerticalScrollIndicator={false}
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); fetchConversations(); }} tintColor={Colors.primary} />}
+        />
+      )}
+
+      <TouchableOpacity
+        style={styles.fab}
+        onPress={() => router.push('/agents')}
+        activeOpacity={0.8}
+      >
+        <View style={styles.fabInner}>
+          <Ionicons name="add" size={28} color="#fff" />
+        </View>
+      </TouchableOpacity>
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  container: { flex: 1, backgroundColor: '#fff' },
+  searchBar: {
+    flexDirection: 'row', alignItems: 'center',
+    marginHorizontal: Spacing.md, marginVertical: Spacing.sm,
+    backgroundColor: Colors.backgroundSecondary,
+    borderRadius: BorderRadius.full,
+    paddingHorizontal: Spacing.md, height: 40,
+  },
+  searchInput: { flex: 1, fontSize: FontSize.sm, color: Colors.text, paddingVertical: 0 },
+  item: {
+    flexDirection: 'row', alignItems: 'center',
+    paddingHorizontal: Spacing.md, paddingVertical: Spacing.md,
+    marginHorizontal: Spacing.md, marginVertical: 4,
+    backgroundColor: '#fff', borderRadius: BorderRadius.lg,
+    ...Shadows.sm,
+  },
+  avatar: {
+    width: 44, height: 44, borderRadius: 22,
+    backgroundColor: Colors.primaryLight,
+    justifyContent: 'center', alignItems: 'center',
+    marginRight: Spacing.md,
+  },
+  content: { flex: 1 },
+  topRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 },
+  name: { fontSize: FontSize.md, fontWeight: '600', color: Colors.text, flex: 1, marginRight: Spacing.sm },
+  time: { fontSize: FontSize.xs, color: Colors.textTertiary },
+  bottomRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  lastMsg: { fontSize: FontSize.sm, color: Colors.textSecondary, flex: 1, marginRight: Spacing.sm },
+  fab: { position: 'absolute', right: Spacing.lg, bottom: Spacing.xl },
+  fabInner: {
+    width: 56, height: 56, borderRadius: 28,
+    backgroundColor: Colors.primary,
+    justifyContent: 'center', alignItems: 'center',
+    ...Shadows.glow,
+  },
+});

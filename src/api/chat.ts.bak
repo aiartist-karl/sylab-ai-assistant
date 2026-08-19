@@ -1,0 +1,72 @@
+/**
+ * 聊天 & 会话模块
+ * - 聊天 (OpenAPI, Bearer PAT): /v3/chat/*
+ * - 会话 (OpenAPI, Bearer PAT): /v1/conversation(s)/*
+ */
+import { openApiClient } from './client';
+import { API_PATHS } from '../constants';
+import type { SnowflakeId } from '../types/api';
+
+/** OpenAPI 列表响应归一化 - 适配多种后端返回格式 */
+function normalizeListResponse(data: any, keyField?: string) {
+  // 尝试多种字段名提取列表
+  const items = data.conversations || data.messages || data.items || data.list || [];
+  return {
+    items: Array.isArray(items) ? items : [],
+    total: data.total || 0,
+    page: data.page_num || data.page || 1,
+    page_size: data.page_size || 20,
+    has_more: data.has_more || false,
+  };
+}
+
+export const chatApi = {
+  // ────────────── 会话 ──────────────
+
+  /** 会话列表 (需要 bot_id) */
+  listConversations: (botId: string, params?: { page_num?: number; page_size?: number }) =>
+    openApiClient
+      .get(API_PATHS.CONVERSATIONS, { params: { bot_id: botId, ...params } })
+      .then((r) => normalizeListResponse(r.data)),
+
+  /** 创建会话 */
+  createConversation: (botId: string, name?: string) =>
+    openApiClient
+      .post(API_PATHS.CONVERSATION_CREATE, { bot_id: botId, name: name || '' })
+      .then((r) => {
+        const data = r.data;
+        return {
+          id: data?.conversation_id || data?.id || '',
+          ...data,
+        };
+      }),
+
+  /** 获取会话详情 */
+  getConversation: (conversationId: SnowflakeId) =>
+    openApiClient
+      .get(API_PATHS.CONVERSATION_RETRIEVE, { params: { conversation_id: conversationId } })
+      .then((r) => r.data),
+
+  /** 获取消息列表 */
+  getMessages: (
+    conversationId: SnowflakeId,
+    params?: { page_num?: number; page_size?: number },
+  ) =>
+    openApiClient
+      .post(API_PATHS.CONVERSATION_MESSAGE_LIST, {
+        conversation_id: conversationId,
+        ...params,
+      })
+      .then((r) => normalizeListResponse(r.data, 'messages')),
+
+  // ────────────── 聊天 ──────────────
+
+  /** 取消聊天 (停止生成) */
+  cancelChat: (conversationId: SnowflakeId, chatId: SnowflakeId) =>
+    openApiClient
+      .post(API_PATHS.CHAT_CANCEL, {
+        conversation_id: conversationId,
+        chat_id: chatId,
+      })
+      .then((r) => r.data),
+};

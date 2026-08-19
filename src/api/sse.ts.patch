@@ -1,0 +1,10 @@
+--- sse.ts.orig
++++ sse.ts
+@@ -178,6 +178,7 @@
+                     const tc = JSON.parse(data.content || {});
+                     const name = tc.function?.name || tc.name || unknown;
+                     const args = tc.function?.arguments || tc.arguments || {};
++                    callbacks.onToolCallStart?.(name);
+                     callbacks.onToolCall?.(name, args);
+                   } catch {}
+                 }
